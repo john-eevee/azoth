@@ -1,0 +1,50 @@
+name: Athanor
+
+on:
+  push:
+    branches: ["main"]
+    path: "athanor/**"
+  pull_request:
+    branches: ["main"]
+    path: "athanor/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Set fail-fast to false if you want to see results for all
+      # combinations even if one fails.
+      fail-fast: false
+      matrix:
+        elixir: [1.19]
+        otp: [27, 28]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v5
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile (with warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Check Formatting
+        run: mix format --check-formatted
+
+      - name: Run Tests
+        run: mix test
