@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "lefthook": "^1.11.4"
+  },
+  "dependencies": {
+    "@commitlint/config-conventional": "^20.4.3",
+    "commitlint": "^20.4.3"
+  }
+}

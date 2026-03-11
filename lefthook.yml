@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  commands:
+    mix-format:
+      run: mix format --check-formatted
+    mix-compile:
+      run: mix compile --warnings-as-errors
+
+commit-msg:
+  commands:
+    commitlint:
+      run: npx commitlint --edit {1}
