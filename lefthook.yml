@@ -2,8 +2,10 @@ pre-commit:
   parallel: true
   commands:
     mix-format:
+      root: athanor/
       run: mix format --check-formatted
     mix-compile:
+      root: athanor/
       run: mix compile --warnings-as-errors
 
 commit-msg:
