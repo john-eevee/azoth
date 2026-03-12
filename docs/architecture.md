@@ -97,6 +97,37 @@ Implications:
 - Quicksilver pulls data directly from object stores or shared filesystems.
 - Logs, heartbeats, and status updates return asynchronously.
 
+
+graph TB
+    subgraph "Athanor: Reactive Control Plane"
+        C[Channel Struct]
+        RS[Reactive Scheduler]
+        M[Metadata Store]
+    end
+
+    subgraph "Data Plane"
+        S3[(Storage: S3/GCS)]
+        Q[Quicksilver Worker]
+    end
+
+    %% Flow 1: Materialization
+    Q -- "1. Publish Output Metadata" --> RS
+    RS -- "2. Materialize ArtifactRef" --> C
+    C -- "3. Persistent Log" --> M
+
+    %% Flow 2: Activation
+    C -- "4. Trigger on New Item" --> RS
+    RS -- "5. Dispatch Job Voucher" --> Q
+    
+    %% Flow 3: Data Locality
+    S3 -- "6. Direct Pull" --> Q
+    Q -- "7. Direct Push" --> S3
+
+    classDef elixir fill:#4e2a8e,stroke:#fff,color:#fff;
+    classDef rust fill:#dea584,stroke:#2b2b2b,color:#2b2b2b;
+    class C,RS,M elixir;
+    class Q rust;
+
 ## Design Choices
 
 ### Elixir and OTP for Athanor
