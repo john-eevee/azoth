@@ -16,5 +16,6 @@ defmodule Athanor.Application do
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Athanor.Supervisor]
     Supervisor.start_link(children, opts)
+    :foo
   end
 end

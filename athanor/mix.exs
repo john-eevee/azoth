@@ -21,6 +21,8 @@ defmodule Athanor.MixProject do
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
-    []
+    [
+      {:ecto, "~> 3.13"}
+    ]
   end
 end
