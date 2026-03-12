@@ -1,6 +1,6 @@
-# Athanor Architecture
+# Azoth Architecture
 
-This document defines the intended direction for Athanor and Quicksilver as a distributed workflow platform.
+This document defines the intended direction for Azoth — a distributed reactive workflow platform composed of two sub-systems:
 
 - `Athanor`: the control-plane for parsing workflows, maintaining state, scheduling work, and exposing UI/API surfaces.
 - `Quicksilver`: the worker and data-plane for staging inputs, executing jobs, streaming logs, and publishing task results.
@@ -97,7 +97,9 @@ Implications:
 - Quicksilver pulls data directly from object stores or shared filesystems.
 - Logs, heartbeats, and status updates return asynchronously.
 
+### Channel Materialization Detail
 
+```mermaid
 graph TB
     subgraph "Athanor: Reactive Control Plane"
         C[Channel Struct]
@@ -118,7 +120,7 @@ graph TB
     %% Flow 2: Activation
     C -- "4. Trigger on New Item" --> RS
     RS -- "5. Dispatch Job Voucher" --> Q
-    
+
     %% Flow 3: Data Locality
     S3 -- "6. Direct Pull" --> Q
     Q -- "7. Direct Push" --> S3
@@ -127,6 +129,7 @@ graph TB
     classDef rust fill:#dea584,stroke:#2b2b2b,color:#2b2b2b;
     class C,RS,M elixir;
     class Q rust;
+```
 
 ## Design Choices
 
@@ -256,19 +259,31 @@ gantt
 - Skip execution when a valid cached result already exists.
 - Treat cache correctness as a core contract.
 
-#### Milestone 4: Remote Workers
+#### Milestone 4: Cache Lookup
+
+- Implement the cache index schema (CAS-backed metadata store).
+- Add cache hit/miss decision logic with explicit invalidation reasons.
+- Produce an audit trail for every cache decision.
+
+#### Milestone 5: Remote Workers
 
 - Split orchestration from execution.
 - Define job voucher, worker registration, and heartbeat protocols.
 - Add status streaming from workers back to Athanor.
 
-#### Milestone 5: Cloud and Shared Storage Staging
+#### Milestone 6: Heartbeats and Retry
+
+- Implement worker lease expiry and health tracking.
+- Define retry policies and backoff strategies.
+- Handle exactly-once-ish completion with idempotent finalization.
+
+#### Milestone 7: Cloud Staging
 
 - Download or stream inputs directly on workers.
 - Upload outputs without routing large files through Athanor.
 - Normalize object-store and POSIX-backed workflows.
 
-#### Milestone 6: Runtime Isolation
+#### Milestone 8: Runtime Isolation
 
 - Support at least one strong isolation backend.
 - Add image or rootfs distribution strategy.
@@ -278,15 +293,15 @@ gantt
 
 ```elixir
 %Job{
-  id: 'task_01_alignment',
-  image: 'genomics/bwa:latest',
+  id: "task_01_alignment",
+  image: "genomics/bwa:latest",
   inputs: [
-    %{name: 'ref', uri: 's3://my-genome-data/hg38.fa'},
-    %{name: 'reads', uri: 's3://my-genome-data/sample_R1.fq.gz'}
+    %{name: "ref", uri: "s3://my-genome-data/hg38.fa"},
+    %{name: "reads", uri: "s3://my-genome-data/sample_R1.fq.gz"}
   ],
-  command: 'bwa mem -t 8 /data/ref /data/reads',
+  command: "bwa mem -t 8 /data/ref /data/reads",
   resources: %{cpu: 8, ram_gb: 16},
-  callback_url: 'https://api.example.com/v1/tasks/task_01/status'
+  lease_token: "ed25519:v1:eyJhbGciOiJFZERTQSJ9..."
 }
 ```
 
