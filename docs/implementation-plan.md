@@ -11,6 +11,7 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 - Resumability correctness over speed
 - Fault-first design (worker loss, partial uploads, retries)
 - Incremental scope: local runner before distributed complexity
+- Validate execution model before investing in parser surface
 
 ## Risk Areas
 
@@ -19,6 +20,8 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 - Cache key incompleteness causing false cache hits
 - Schema churn if task/job state machine not formalized first
 - Firecracker introduced too early (ops burden + nested virt constraints)
+- Reactive channel semantics designed without fingerprint model in place
+- Security trust boundary for control/data split left implicit until too late
 
 ---
 
@@ -38,102 +41,151 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 - Dispatch model (pull-based leasing recommended)
 
 ### AZ-004: Test Strategy
-- Unit tests (DSL/planner)
+- Unit tests (planner/state machine)
 - Integration tests (runner)
 - Fault tests (retry/heartbeat)
+- Event log and replay harness design: the append-only event log is the
+  foundational test mechanism for Phase 3 (reactive scheduler) and Phase 9
+  (chaos injection); the harness shape must be decided here even if the
+  implementation lands later
 
-**Exit Criteria**: Canonical model + lifecycle docs + executable test skeleton
-
----
-
-## Phase 1 — DSL Parser + Deterministic Plan IR
-
-### AZ-101: Starlark Parser Boundary
-- Implement parser layer and AST validation
-- Handle `process`, `channel`, `workflow` primitives from DSL spec
-
-### AZ-102: Canonical IR Serializer
-- Build order-stable IR for deterministic hashing
-- JSON or Protobuf encoding for reproducible fingerprints
-
-### AZ-103: DSL Linting & Validation
-- Required fields, resource schema, command placeholder validation
-- Error messages and recovery
-
-### AZ-104: Golden Tests
-- Same input produces byte-identical IR/hash
-- Regression tests for parser behavior
-
-**Exit Criteria**: Parse `dsl.md` examples into stable IR with deterministic snapshots
+**Exit Criteria**: Canonical model + lifecycle docs + executable test skeleton + replay harness design doc
 
 ---
 
-## Phase 2 — Local Runner (MVP Execution)
+## Phase 1 — Local Runner (MVP Execution)
 
-### AZ-201: Process Launcher
+Build the execution core first. The runner is the load-bearing invariant of
+the whole system. Validating concurrency, retry, and state transitions against
+a simple JSON/YAML manifest costs far less than discovering execution model
+problems after the Starlark parser is already in place.
+
+### AZ-101: Process Launcher
 - Bounded concurrency executor
 - Captures stdout/stderr/exit codes
 
-### AZ-202: Run Metadata Persistence
+### AZ-102: Run Metadata Persistence
 - Store status, logs, exit codes, timestamps
-- Simple local DB or file-based storage
+- SQLite-backed local store (Postgres-ready schema)
 
-### AZ-203: DAG Executor
+### AZ-103: Structured Log Streaming
+- Emit structured events (task started, stdout line, task completed/failed)
+  to a local append-only event log
+- Provide a basic read-path: tail-follow and query by run/task ID
+- This is the minimum observability surface needed to develop and debug all
+  subsequent phases; full API and dashboards come later in Phase 8
+
+### AZ-104: DAG Executor
 - Dependency-aware execution (ready tasks → running → completed)
 - Transition handling and error propagation
 
-### AZ-204: Retry Policy
+### AZ-105: Retry Policy
 - Max attempts, backoff strategies, retryable failure detection
 
-**Exit Criteria**: Multi-step local workflow executes with logs and retry behavior
+**Exit Criteria**: Multi-step local workflow defined in JSON/YAML executes with
+structured logs, retry behavior, and a queryable event log
 
 ---
 
-## Phase 3 — Reactive Channel Scheduler
+## Phase 2 — DSL Parser + Deterministic Plan IR
 
-### AZ-301: Channel Materialization
-- Events for channel readiness and data arrival
-- Task activation based on channel state
+Now that the execution model is validated, introduce the Starlark parser as an
+input surface that compiles down to the IR the runner already understands. The
+parser's only job is to produce a stable, correct plan; the runner does not
+change.
 
-### AZ-302: Fan-out/Fan-in & Backpressure
-- Map over channels, partitioning, merge semantics
-- Backpressure rules and bounded queueing
+### AZ-201: Starlark Parser Boundary
+- Implement parser layer and AST validation
+- Handle `process`, `channel`, `workflow` primitives from DSL spec
 
-### AZ-303: Idempotent Event Ingestion
-- Dedupe keys and event ordering guarantees
-- Exactly-once-ish semantics
+### AZ-202: Canonical IR Serializer
+- Build order-stable IR for deterministic hashing
+- JSON encoding for reproducible fingerprints (Protobuf can replace it later
+  when the wire format is needed for gRPC in Phase 6)
 
-### AZ-304: Deterministic Replay Tests
-- Scheduler can replay event log deterministically
-- Tests for ordering and idempotency
+### AZ-203: DSL Linting & Validation
+- Required fields, resource schema, command placeholder validation
+- Error messages and recovery
 
-**Exit Criteria**: Readiness driven by channel arrivals, not only static DAG completion
+### AZ-204: Golden Tests
+- Same input produces byte-identical IR/hash
+- Regression tests for parser behavior
+
+**Exit Criteria**: Parse `dsl.md` examples into stable IR; runner executes
+Starlark-defined workflows end-to-end with deterministic snapshots
 
 ---
 
-## Phase 4 — Resumability + Cache Correctness
+## Phase 3 — Resumability + Cache Correctness
 
-### AZ-401: TaskFingerprint Implementation
+Cache correctness must be established before reactive channel semantics.
+Fan-out over a channel produces many tasks; without fingerprinting and
+idempotency already in place, partial resumption after a crash is undefined
+behavior. AZ-301 (TaskFingerprint) is a prerequisite of Phase 4's idempotent
+event ingestion (AZ-403).
+
+### AZ-301: TaskFingerprint Implementation
 - Hash of process + inputs + image + command + runtime/env policy
-- Stable fingerprint generation
+- Stable fingerprint generation anchored to the canonical IR from Phase 2
 
-### AZ-402: Cache Index Schema
+### AZ-302: Cache Index Schema
 - CAS index design and lookup API
 - Fast lookup of cached results
 
-### AZ-403: Cache Hit/Miss Engine
+### AZ-303: Cache Hit/Miss Engine
 - Decision logic with explicit invalidation reasons
-- Audit trail for cache decisions
+- Audit trail for cache decisions surfaced through the event log (AZ-103)
 
-### AZ-404: Resume-After-Crash Flow
+### AZ-304: Resume-After-Crash Flow
 - Recovery after control-plane restart
-- Replay safety tests
+- Replay safety tests using the harness designed in AZ-004
 
-**Exit Criteria**: Interrupted run can resume correctly with explainable cache decisions
+**Exit Criteria**: Interrupted run resumes correctly with explainable cache
+decisions visible in the event log
+
+---
+
+## Phase 4 — Reactive Channel Scheduler
+
+With the fingerprint model and idempotency semantics established, the reactive
+scheduler can be built on a solid footing. AZ-401 (Query API) is introduced
+here because cache decisions and channel state transitions are opaque without
+a read-path; debugging reactive behavior requires querying scheduler state.
+
+### AZ-401: Channel Materialization
+- Events for channel readiness and data arrival
+- Task activation based on channel state
+
+### AZ-402: Fan-out/Fan-in & Backpressure
+- Map over channels, partitioning, merge semantics
+- Backpressure rules and bounded queueing
+
+### AZ-403: Idempotent Event Ingestion
+- Dedupe keys and event ordering guarantees
+- Exactly-once-ish semantics; relies on TaskFingerprint from AZ-301
+
+### AZ-404: Query API (minimal)
+- Run/task/event queries with filtering and pagination
+- Expose cache decision audit trail and channel state
+- Full dashboards and SLO metrics remain in Phase 8; this is the minimum
+  read-path needed to develop and validate the reactive scheduler
+
+### AZ-405: Deterministic Replay Tests
+- Scheduler replays event log deterministically using harness from AZ-004
+- Tests for ordering, idempotency, and channel-triggered task activation
+
+**Exit Criteria**: Readiness driven by channel arrivals, cache-correct, and
+queryable via the minimal API
 
 ---
 
 ## Phase 5 — Control/Data Plane Split (Quicksilver Protocol)
+
+The first phase that introduces a network boundary. The security trust model
+for this boundary — worker registration, voucher verification, and transport
+security — must be designed here even if full hardening lands in Phase 9.
+Deferring the mTLS and authz interface design until after the protocol
+solidifies forces breaking changes later.
 
 ### AZ-501: Protobuf Contracts
 - Job voucher, heartbeat, status stream, completion payload
@@ -141,17 +193,25 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 
 ### AZ-502: Athanor Dispatch Service
 - Worker registration and task dispatch
-- Voucher signing and verification
+- Voucher signing (Ed25519, short TTL + nonce) and verification
 
-### AZ-503: Worker Heartbeat Monitor
+### AZ-503: Trust Boundary Design
+- Define the mTLS and authz model for the control/data plane interface
+- Worker identity: certificate-based or token-based registration
+- Authz scope: what a worker is permitted to claim, report, and read
+- This is a design and interface commitment, not full hardening; hardening
+  lands in AZ-902
+
+### AZ-504: Worker Heartbeat Monitor
 - Lease expiry handling and worker health tracking
 - Failover strategies
 
-### AZ-504: Exactly-once-ish Completion
+### AZ-505: Exactly-once-ish Completion
 - Idempotent finalization and dedupe
 - Duplicate event handling
 
 **Exit Criteria**: Remote worker can receive tasks and stream state safely
+over a defined and documented trust boundary
 
 ---
 
@@ -199,21 +259,21 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 
 ---
 
-## Phase 8 — Observability + API/UI
+## Phase 8 — Observability + API/UI (Full)
 
-### AZ-801: Query API
-- Run/task/event queries
-- Filtering and pagination
+The minimal observability surfaces (structured log streaming in AZ-103, query
+API in AZ-404) are already in place. This phase completes the production
+observability story.
 
-### AZ-802: Log Streaming
-- Real-time logs to UI/API consumers
-- Backpressure and buffering
+### AZ-801: Log Streaming (production)
+- Real-time log streaming to UI/API consumers with backpressure and buffering
+- Replaces the development-grade tail-follow from AZ-103
 
-### AZ-803: Explainability Endpoints
+### AZ-802: Explainability Endpoints
 - Scheduler and cache decision explanations
-- Debugging APIs
+- Debugging APIs surfacing the audit trail from AZ-303
 
-### AZ-804: SLO Dashboards
+### AZ-803: SLO Dashboards
 - Queue latency, retry rates, worker health, cache hit ratio
 - Metrics and alerting
 
@@ -225,10 +285,11 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 
 ### AZ-901: Chaos/Fault Injection
 - Worker death, network flap, partial upload scenarios
-- Automated fault testing
+- Automated fault testing using replay harness from AZ-004
 
 ### AZ-902: Security Hardening
-- Voucher signing/verification, mTLS, authz boundaries
+- Implement mTLS and authz boundaries designed in AZ-503
+- Full voucher signing/verification audit
 - Security review and compliance
 
 ### AZ-903: Performance Targets
@@ -252,14 +313,36 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 | Voucher Security | Ed25519 signed claims | Short TTL + nonce |
 | Worker Dispatch | Pull-based leasing | Recommended for scalability |
 | Cache Storage | Metadata in DB, artifacts in object store | Strict checksum verification |
+| IR Encoding | JSON (Phase 2), Protobuf (Phase 5) | Migrate to Protobuf when gRPC wire format is needed |
+| Trust Boundary | mTLS + certificate-based worker identity | Designed in AZ-503, hardened in AZ-902 |
+
+---
+
+## Milestone to Phase Map
+
+| Gantt Milestone | Engineering Phases |
+|---|---|
+| M1: Runner | Phase 1 (AZ-101–105) |
+| M2: DAG Scheduling | Phase 1 (AZ-104) + Phase 2 (AZ-201–204) |
+| M3: Content Hashing | Phase 3 (AZ-301–302) |
+| M4: Cache Lookup | Phase 3 (AZ-303–304) |
+| M5: Remote Workers | Phase 5 (AZ-501–505) |
+| M6: Heartbeats and Retry | Phase 5 (AZ-504–505) |
+| M7: Cloud Staging | Phase 6 (AZ-601–604) |
+| M8: Runtime Isolation | Phase 7 (AZ-701–704) |
 
 ---
 
 ## Execution Order
 
-1. **Phases 0-4** before serious distributed work (local-first recommended)
-2. **Phase 5** only after state machine + fingerprint semantics stable
-3. Firecracker as optional until container path hardened
+1. **Phases 0–1** establish the execution model before any DSL or distribution work
+2. **Phase 2** introduces the parser only after the runner is validated
+3. **Phase 3** establishes fingerprint and cache correctness before reactive semantics
+4. **Phase 4** builds the reactive scheduler on top of a proven fingerprint model
+5. **Phase 5** is the first network boundary; define the trust model here
+6. **Phases 6–7** extend capability without changing core invariants
+7. **Phase 8** completes observability; minimal surfaces were introduced in Phases 1 and 4
+8. **Phase 9** hardens what was designed in earlier phases — no new interfaces
 
 ## Success Criteria (v1)
 
