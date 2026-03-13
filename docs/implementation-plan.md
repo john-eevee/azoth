@@ -12,6 +12,7 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 - Fault-first design (worker loss, partial uploads, retries)
 - Incremental scope: local runner before distributed complexity
 - Validate execution model before investing in parser surface
+- Channels are append-only streams; subscribers hold cursors and must never destroy items
 
 ## Risk Areas
 
@@ -22,6 +23,8 @@ Phase-by-phase plan for Azoth (Athanor control-plane + Quicksilver data-plane) t
 - Firecracker introduced too early (ops burden + nested virt constraints)
 - Reactive channel semantics designed without fingerprint model in place
 - Security trust boundary for control/data split left implicit until too late
+- Dynamic output glob resolution: partial publication on worker failure must not corrupt channel state
+- Subscriber cursor durability: cursors lost on control-plane restart cause duplicate or missed fan-out dispatches
 
 ---
 
@@ -155,14 +158,17 @@ a read-path; debugging reactive behavior requires querying scheduler state.
 ### AZ-401: Channel Materialization
 - Events for channel readiness and data arrival
 - Task activation based on channel state
+- Persist subscriber cursors durably so control-plane restarts do not lose progress or trigger duplicate fan-out
 
 ### AZ-402: Fan-out/Fan-in & Backpressure
 - Map over channels, partitioning, merge semantics
 - Backpressure rules and bounded queueing
+- Dynamic fan-out: handle variable-cardinality publications from glob-resolved outputs (N items appended atomically)
 
 ### AZ-403: Idempotent Event Ingestion
 - Dedupe keys and event ordering guarantees
 - Exactly-once-ish semantics; relies on TaskFingerprint from AZ-301
+- Treat multi-item glob publication as a single atomic event to prevent partial fan-out on re-delivery
 
 ### AZ-404: Query API (minimal)
 - Run/task/event queries with filtering and pagination
@@ -224,10 +230,12 @@ over a defined and documented trust boundary
 ### AZ-602: Worker-Side Staging Pipeline
 - Pull inputs via URI/mount
 - Publish outputs without control-plane proxy
+- Implement glob output resolution: after container exits, scan working directory against declared glob patterns, upload all matching files, and publish the full `ArtifactRef` array atomically to Athanor
 
 ### AZ-603: Multipart Upload/Retry
 - Large file handling with checksums
 - Retry strategy for partial failures
+- Glob resolution must be idempotent: a retry after partial upload must not publish duplicate `ArtifactRef` entries
 
 ### AZ-604: Data Locality Tests
 - Verify no control-plane data proxying
@@ -315,6 +323,9 @@ observability story.
 | Cache Storage | Metadata in DB, artifacts in object store | Strict checksum verification |
 | IR Encoding | JSON (Phase 2), Protobuf (Phase 5) | Migrate to Protobuf when gRPC wire format is needed |
 | Trust Boundary | mTLS + certificate-based worker identity | Designed in AZ-503, hardened in AZ-902 |
+| Channel Semantics | Append-only stream with per-subscriber cursors | No item removal; enables safe multi-consumer fan-out |
+| Dynamic Outputs | Glob patterns resolved by Quicksilver at runtime | Athanor never touches the filesystem; all path discovery is data-plane responsibility |
+| Glob Publication | Atomic multi-item append to channel | All resolved ArtifactRefs from one execution published as a single event to prevent partial fan-out |
 
 ---
 
