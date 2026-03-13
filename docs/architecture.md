@@ -71,11 +71,15 @@ flowchart TB
 
 Athanor should behave like a dataflow engine. Instead of only evaluating fixed task-to-task edges, tasks should become runnable when the required inputs arrive on their channels.
 
+Traditional DAG schedulers fail for bioinformatics workloads because genomic tools frequently generate a dynamic number of output files — splitting a genome into chromosome chunks, for example, yields an unpredictable count of `.fa` files that cannot be hardcoded into a static output declaration. Azoth solves this by delegating output discovery to Quicksilver at runtime and modelling channels as append-only streams.
+
 Implications:
 
 - The scheduler must be event-driven.
 - Runtime state must track channel materialization, not only task completion.
-- Parallelism should emerge from data readiness.
+- Parallelism is discovered at runtime, not planned at parse time.
+- Process `outputs` declarations may be glob patterns; Quicksilver resolves them after execution.
+- Channels are **append-only streams**, not queues — items are never consumed or destroyed.
 
 ### 2. Deterministic Workflow Logic
 
@@ -129,6 +133,55 @@ graph TB
     classDef rust fill:#dea584,stroke:#2b2b2b,color:#2b2b2b;
     class C,RS,M elixir;
     class Q rust;
+```
+
+## Channel Semantics: Streams, Not Queues
+
+Channels are **append-only streams of immutable `ArtifactRef` values**. This distinction is critical:
+
+- **Publishers** (Quicksilver workers) append items to the tail of a channel.
+- **Subscribers** (downstream processes) maintain a cursor — an index of the last item they have consumed. They read items without removing them.
+- Multiple downstream processes can subscribe to the same channel independently. Each holds its own cursor and processes every item at its own pace.
+
+This means a downstream process can never "starve" a sibling by consuming shared data. If Process B and Process C both subscribe to the output of Process A, each receives all items regardless of ordering or speed.
+
+```
+Channel (append-only stream)
+  index 0: ArtifactRef(chr1.fa)   ← Process B cursor: 3 (done)
+  index 1: ArtifactRef(chr2.fa)       Process C cursor: 1 (in progress)
+  index 2: ArtifactRef(chr3.fa)
+  ...
+```
+
+## Dynamic Pub/Sub Lifecycle
+
+Because genomic tools generate an unpredictable number of output files, Athanor cannot resolve output paths at parse time. Instead, output discovery is delegated to Quicksilver at runtime using glob patterns.
+
+### Lifecycle Steps
+
+1. **Subscription (Athanor)**: During parsing, Athanor registers that Process B subscribes to the output channel of Process A. No file counts or paths are assumed.
+2. **Execution (Quicksilver)**: Quicksilver runs Process A. The tool may generate any number of output files (e.g., `chr1.fa … chr24.fa`).
+3. **Publication (Quicksilver)**: After the container exits, Quicksilver scans the working directory against the declared output glob (e.g., `./chunks/*.fa`). It uploads matching files to object storage, computes content hashes, and publishes an array of `ArtifactRef` values back to Athanor over gRPC.
+4. **Fan-out (Athanor)**: Athanor appends the new `ArtifactRef` items to the channel. The Reactive Scheduler detects that Process B subscribes to this channel and immediately spawns one `TaskRun` per new item.
+
+This keeps Athanor entirely ignorant of filesystem layout; all path resolution stays in the data-plane.
+
+```mermaid
+sequenceDiagram
+    participant A as Athanor (Scheduler)
+    participant Q1 as Quicksilver (Process A)
+    participant C as Channel (Stream)
+    participant Q2 as Quicksilver (Process B)
+
+    A->>Q1: Dispatch job (outputs: "./chunks/*.fa")
+    Note over Q1: Tool generates N dynamic files
+    Q1->>A: Publish [chr1.fa, chr2.fa, chr3.fa] as ArtifactRefs
+    A->>C: Append 3 items
+    Note over A,C: Process B subscribed to this channel
+    C-->>A: Trigger event (3 new items at cursor 0)
+    A->>Q2: Dispatch TaskRun (chr1.fa)
+    A->>Q2: Dispatch TaskRun (chr2.fa)
+    A->>Q2: Dispatch TaskRun (chr3.fa)
 ```
 
 ## Design Choices
@@ -195,13 +248,16 @@ sequenceDiagram
     U->>A: Submit workflow
     A->>A: Parse Starlark and build plan
     A->>A: Check cache and ready channels
-    A->>Q: Dispatch signed job voucher
+    A->>Q: Dispatch signed job voucher (outputs: glob pattern)
     Q->>S: Pull inputs via URI or mount
     Q->>R: Start isolated task
     R-->>Q: Stream stdout and stderr
     Q-->>A: Heartbeats and logs
-    R->>S: Write outputs
-    Q-->>A: Final status and output metadata
+    R->>S: Write outputs (dynamic file count)
+    Q->>Q: Resolve glob against working directory
+    Q->>S: Upload matched files, compute content hashes
+    Q-->>A: Publish ArtifactRefs for all resolved outputs
+    A->>A: Append ArtifactRefs to channel; trigger fan-out
     A-->>U: Update UI and downstream readiness
 ```
 
@@ -313,6 +369,8 @@ gantt
 - Large image distribution and cold start latency.
 - Partial failures such as disk exhaustion, transient network loss, and interrupted uploads.
 - Firecracker infrastructure constraints such as KVM availability and nested virtualization support.
+- Dynamic output cardinality: glob resolution on the worker must be atomic with the upload step to avoid partial publications on failure.
+- Cursor management for channel subscribers: cursors must be durable and recoverable after control-plane restart.
 
 ## Recommended Initial Scope
 
