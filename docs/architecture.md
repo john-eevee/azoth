@@ -222,7 +222,7 @@ This keeps bulk transfer close to execution and prevents the control-plane from 
 
 ```mermaid
 gantt
-    title Athanor to v1.0
+    title Azoth to v1.0
     dateFormat  YYYY-MM-DD
     axisFormat  %b
     section Foundation
@@ -316,9 +316,10 @@ gantt
 
 ## Recommended Initial Scope
 
-- Start with a local runner and simple planner.
-- Add resumability before broad executor support.
-- Introduce remote workers before advanced isolation.
+- Start with a local runner driven by a simple JSON/YAML manifest; validate the execution model before introducing the Starlark parser.
+- Add structured log streaming alongside the runner, not as a later observability pass.
+- Establish content hashing and cache correctness before building reactive channel semantics.
+- Introduce remote workers only after the state machine and fingerprint semantics are stable.
 - Treat cloud staging as required for production readiness, but not for the first local prototype.
 
 ## Success Criteria For v1
