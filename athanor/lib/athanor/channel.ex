@@ -6,17 +6,17 @@ defmodule Athanor.Channel do
   embedded_schema do
     field :type, Ecto.Enum, values: [:path, :result, :literal]
     field :process_id, Ecto.UUID
-    field :status, Ecto.Enum, values: [:pending, :ative, :completed]
+    field :status, Ecto.Enum, values: [:pending, :active, :completed]
     field :options, :map
     embeds_many :artifacts, ArtifactRef
+  end
 
-
-    def hand_artifact(channel) do
+  @doc "Fetch the head artifact from the channel (if any)."
+  def hand_artifact(channel) do
     if Enum.empty?(channel.artifacts) do
       {:error, :empty}
-      else
-        {:ok, hd(channel.artifacts)}
-    end
+    else
+      {:ok, hd(channel.artifacts)}
     end
   end
 end

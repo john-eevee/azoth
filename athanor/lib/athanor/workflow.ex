@@ -3,7 +3,7 @@ defmodule Athanor.Workflow do
 
   alias Athanor.Channel
   alias Athanor.Process
-  alias Ecto.Changeset
+  # alias Ecto.Changeset (not currently used)
 
   embedded_schema do
     field :name, :string
