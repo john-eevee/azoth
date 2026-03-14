@@ -1,17 +1,27 @@
-defmodule Athanor.Process do
+defmodule Athanor.Domain.Process do
   @moduledoc """
   A unit of work that executes a command inside a container image.
   """
+  use Ecto.Schema
 
-  @enforce_keys [:id, :image, :command]
-  defstruct [:id, :image, :command, inputs: %{}, outputs: %{}, resources: %{}]
+  @primary_key false
+  embedded_schema do
+    field(:id, :string)
+    field(:image, :string)
+    field(:command, :string)
+    # URI templates or channel references as strings/maps
+    field(:inputs, :map, default: %{})
+    # Named URI templates or list of globs
+    field(:outputs, {:array, :string})
+    field(:resources, :map, default: %{})
+  end
 
   @type t :: %__MODULE__{
           id: String.t(),
           image: String.t(),
           command: String.t(),
-          inputs: %{String.t() => String.t() | Athanor.Channel.t()},
-          outputs: %{String.t() => String.t()} | [String.t()],
-          resources: %{String.t() => number() | String.t()}
+          inputs: map(),
+          outputs: [String.t()],
+          resources: map()
         }
 end

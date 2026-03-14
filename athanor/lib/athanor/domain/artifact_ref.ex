@@ -1,10 +1,15 @@
-defmodule Athanor.ArtifactRef do
+defmodule Athanor.Domain.ArtifactRef do
   @moduledoc """
   A content-addressed reference to a data artifact.
   """
+  use Ecto.Schema
 
-  @enforce_keys [:uri]
-  defstruct [:uri, :digest, :metadata]
+  @primary_key false
+  embedded_schema do
+    field(:uri, :string)
+    field(:digest, :string)
+    field(:metadata, :map)
+  end
 
   @type t :: %__MODULE__{
           uri: String.t(),
