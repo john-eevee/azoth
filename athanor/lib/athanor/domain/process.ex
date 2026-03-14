@@ -3,6 +3,7 @@ defmodule Athanor.Domain.Process do
   A unit of work that executes a command inside a container image.
   """
   use Ecto.Schema
+  import Ecto.Changeset
 
   @primary_key false
   embedded_schema do
@@ -12,7 +13,7 @@ defmodule Athanor.Domain.Process do
     # URI templates or channel references as strings/maps
     field(:inputs, :map, default: %{})
     # Named URI templates or list of globs
-    field(:outputs, {:array, :string})
+    field(:outputs, {:array, :string}, default: [])
     field(:resources, :map, default: %{})
   end
 
@@ -24,4 +25,10 @@ defmodule Athanor.Domain.Process do
           outputs: [String.t()],
           resources: map()
         }
+
+  def changeset(process, attrs) do
+    process
+    |> cast(attrs, [:id, :image, :command, :inputs, :outputs, :resources])
+    |> validate_required([:id, :image, :command])
+  end
 end
