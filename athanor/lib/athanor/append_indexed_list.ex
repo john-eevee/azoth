@@ -5,6 +5,10 @@ defmodule Athanor.AppendIndexedList do
 
   @spec append(t(), list(term())) :: t()
   def append(this, items) when is_list(items) do
+    if Enum.any?(items, &is_nil/1) do
+      raise ArgumentError, "nil items are not allowed in AppendIndexedList"
+    end
+
     Enum.reduce(items, this, fn item, %__MODULE__{count: count, items: acc_items} ->
       %__MODULE__{count: count + 1, items: Map.put(acc_items, count, item)}
     end)
