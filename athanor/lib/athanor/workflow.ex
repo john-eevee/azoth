@@ -1,13 +1,36 @@
 defmodule Athanor.Workflow do
-  use Ecto.Schema
+  @type id() :: Uniq.UUID
 
-  alias Athanor.Channel
-  alias Athanor.Process
-  # alias Ecto.Changeset (not currently used)
+  @type indexed(t) :: %{non_neg_integer() => t}
 
-  embedded_schema do
-    field :name, :string
-    embeds_many :processes, Process
-    embeds_many :channels, Channel
-  end
+  @type cursor() :: non_neg_integer()
+
+  @type artifact() :: %{
+          uri: URI.t(),
+          hash: nonempty_binary(),
+          metadata: map()
+        }
+
+  @type channel() :: %{
+          producer_id: id(),
+          items: indexed(artifact()),
+          closed?: boolean()
+        }
+
+  @type channel_id() :: id()
+
+  @type process_id() :: id()
+
+  @type subscription() :: %{cursor: cursor(), process_id: process_id()}
+
+  @type process() :: %{
+          image: String.t(),
+          command: String.t(),
+          input: %{String.t() => String.t()},
+          resources: %{
+            mem: non_neg_integer() | :inf,
+            cpu: float() | :inf,
+            disk: non_neg_integer() | :inf
+          }
+        }
 end

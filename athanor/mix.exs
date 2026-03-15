@@ -22,7 +22,7 @@ defmodule Athanor.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ecto, "~> 3.13"}
+      {:uniq, "~> 0.6"}
     ]
   end
 end
