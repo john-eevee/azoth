@@ -1,5 +1,24 @@
 defmodule Athanor.AppendIndexedList do
-  @type t() :: %__MODULE__{count: non_neg_integer(), items: map()}
+  @moduledoc """
+  An append-only indexed list.
+
+  The structure stores items in insertion order and provides O(1) indexed access
+  via `at/2`. Appending `nil` is not allowed and will raise `ArgumentError`.
+
+  Examples
+
+      iex> a = %Athanor.AppendIndexedList{} |> Athanor.AppendIndexedList.append(:first)
+      iex> Athanor.AppendIndexedList.at(a, 0)
+      :first
+
+      iex> a = %Athanor.AppendIndexedList{} |> Athanor.AppendIndexedList.append([:a, :b])
+      iex> Enum.to_list(a)
+      [:a, :b]
+
+  """
+
+  @typedoc "An append-only list holding a count and a map of index -> item"
+  @type t() :: %__MODULE__{count: non_neg_integer(), items: %{non_neg_integer() => term()}}
 
   defstruct count: 0, items: %{}
 
@@ -14,8 +33,10 @@ defmodule Athanor.AppendIndexedList do
     end)
   end
 
+  @doc "Append a single item. Raises if item is nil."
   @spec append(t(), term()) :: t()
   def append(this, item) do
+    if is_nil(item), do: raise(ArgumentError, "nil items are not allowed in AppendIndexedList")
     append(this, [item])
   end
 
