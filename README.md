@@ -30,21 +30,6 @@ flowchart LR
 
 See [`docs/architecture.md`](docs/architecture.md) for the full architecture, design choices, and detailed diagrams.
 
-## Roadmap
-
-| Milestone | Description | Status |
-|---|---|---|
-| M1: Runner | Parallel local command execution with structured logs | done |
-| M2: DAG Scheduling | Dependency-aware task execution | active |
-| M3: Content Hashing | Task fingerprinting for cache correctness | planned |
-| M4: Cache Lookup | CAS-backed cache index with audit trail | planned |
-| M5: Remote Workers | Quicksilver protocol, voucher dispatch, pull-based leasing | planned |
-| M6: Heartbeats and Retry | Worker lease expiry, failover, idempotent completion | planned |
-| M7: Cloud Staging | Direct worker-to-object-store data movement | planned |
-| M8: Runtime Isolation | Pluggable executors: container and Firecracker | planned |
-
-See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phase-by-phase engineering breakdown and milestone-to-phase mapping.
-
 ## Documentation
 
 | Document | Contents |
