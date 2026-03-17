@@ -135,6 +135,37 @@ graph TB
     class Q rust;
 ```
 
+## Per-Workflow Supervision Tree (Phase 1 Implementation)
+
+Athanor implements each workflow as an isolated OTP supervision tree via `Athanor.Workflow.Supervisor` (DynamicSupervisor). Each workflow instance has its own `Athanor.Workflow.Instance` (one_for_all Supervisor) containing three siblings:
+
+1. **Registry** — Stores workflow entity (channels + processes) and derives the subscription graph (which process subscribes to which channel).
+2. **Scheduler** — GenServer that maintains a reactive queue. When artifacts arrive on a channel, it enqueues one task per new item per subscriber, respecting `max_concurrency` gates and CAS deduplication (fingerprint-based idempotency).
+3. **TaskMonitor** — Elixir Registry (`:unique` keyed by fingerprint) + GenServer wrapper that monitors running task PIDs. On unexpected crash, it calls `Scheduler.fail_task/2` to transition the task to failed state and continue the workflow.
+
+```mermaid
+graph TB
+    subgraph DynamicSup["Athanor.Workflow.Supervisor (DynamicSupervisor)"]
+        subgraph Instance["Instance (per workflow_id, one_for_all)"]
+            Registry["Registry (Entity Store)"]
+            Scheduler["Scheduler (Reactive Queue)"]
+            TaskMonitor["TaskMonitor (PID Monitor)"]
+        end
+    end
+    
+    User["User / CI System"] -->|start_workflow(workflow_id, ...| DynamicSup
+    DynamicSup -->|spawn Instance| Instance
+    Registry -->|channels + subscriptions| Scheduler
+    Scheduler -->|dispatch task| TaskMonitor
+    TaskMonitor -->|monitor PID| Scheduler
+```
+
+**Isolation**: One workflow crash or high concurrency spike does not affect others. Each Instance is independently supervised and can be stopped/restarted.
+
+**Registration**: All GenServer names use `{:global, "string_name"}` instead of dynamic atoms to avoid atom table exhaustion. This is critical for systems that manage many workflows.
+
+**Fingerprinting**: Each task is uniquely identified by its fingerprint (hash of process + inputs + image + command + environment). The Scheduler uses a CAS index (MapSet of fingerprints) to prevent duplicate task dispatch if the same inputs are published multiple times.
+
 ## Channel Semantics: Streams, Not Queues
 
 Channels are **append-only streams of immutable `ArtifactRef` values**. This distinction is critical:
@@ -273,6 +304,52 @@ flowchart LR
 ```
 
 This keeps bulk transfer close to execution and prevents the control-plane from becoming a bottleneck.
+
+## Reactive Scheduler Execution Flow (Phase 1)
+
+The Scheduler implements a pull-based task dispatch model:
+
+1. **Subscription Setup**: At workflow start, the Scheduler derives subscriptions from the Registry. Each process gets a cursor at the current buffer length, so only *new* arrivals trigger tasks.
+
+2. **Append Event**: When Quicksilver publishes artifacts (e.g., from Process A's output), the Scheduler's `do_append/2` handler receives the new items and appends them to the channel buffer.
+
+3. **Fan-out**: For each new item, the Scheduler checks all subscribers to that channel. For each subscriber that has not yet seen the item (cursor < item index), it:
+   - Computes the task fingerprint (hash of process + inputs).
+   - Checks the CAS index to avoid duplicates.
+   - Enqueues the task into the queue.
+
+4. **Concurrency Gate**: Tasks are dequeued and dispatched to Quicksilver only if `current_running_count < max_concurrency`. Excess tasks wait in the queue.
+
+5. **Dispatch**: The Dispatcher builds a voucher (image, command, inputs, output_patterns, resources, fingerprint) and returns `{:ok, fingerprint}`. The TaskMonitor registers the fingerprint → PID mapping.
+
+6. **Completion/Failure**: When a task completes or fails, the handler updates the state:
+   - Moves the task to completed/failed state.
+   - If outputs are available, publishes them to the process's output channel (triggering downstream fan-out).
+   - Dequeues the next waiting task if the concurrency gate allows.
+
+```mermaid
+sequenceDiagram
+    participant Q as Quicksilver (Process A)
+    participant Scheduler
+    participant Registry
+    participant Dispatcher
+    participant TM as TaskMonitor
+    
+    Q->>Scheduler: do_append(channel_id, [ArtifactRef])
+    Scheduler->>Registry: get_subscriptions(channel_id)
+    loop for each subscriber
+        Scheduler->>Scheduler: enqueue_task (if not CAS-deduped)
+    end
+    
+    Scheduler->>Dispatcher: dispatch_task(fingerprint, voucher)
+    Dispatcher->>Q: dispatch (async)
+    Scheduler->>TM: register(fingerprint, PID)
+    TM->>TM: monitor(PID)
+    
+    Q->>Scheduler: complete_task(fingerprint, [outputs])
+    Scheduler->>Scheduler: do_append(output_channel, [ArtifactRef])
+    Scheduler->>Scheduler: dispatch_next (dequeue if gate allows)
+```
 
 ## Milestones
 

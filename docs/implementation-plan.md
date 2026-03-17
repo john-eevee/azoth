@@ -88,6 +88,27 @@ problems after the Starlark parser is already in place.
 **Exit Criteria**: Multi-step local workflow defined in JSON/YAML executes with
 structured logs, retry behavior, and a queryable event log
 
+**Status**: ✅ COMPLETE (2026-03-16)
+
+**Implementation Details**:
+- **Supervision Tree**: Each workflow spawned via `Athanor.Workflow.Supervisor` DynamicSupervisor gets an isolated Instance (one_for_all Supervisor) containing Registry, Scheduler, and TaskMonitor.
+- **Registration**: All GenServer names use `{:global, "string_name"}` to prevent atom table exhaustion with many workflows.
+- **Reactive Scheduler**: `Workflow.Scheduler` GenServer implements fan-out on channel append. Enqueues one task per artifact per subscriber, deduplicates via CAS (content-addressable storage) index keyed by fingerprint, gates concurrency via max_concurrency, and drains queue on task completion.
+- **Dispatcher**: `Workflow.Dispatcher` behaviour with `StubDispatcher` implementation for Phase 1. Logs full job voucher (image, command, inputs, output_search_patterns, resources, fingerprint) and returns `{:ok, fingerprint}` synchronously. Real gRPC dispatch comes in Phase 5.
+- **Task Monitor**: `Workflow.TaskMonitor` wraps Elixir Registry (keyed by fingerprint) and monitors running task PIDs. On crash, auto-calls `Scheduler.fail_task/2` for recovery.
+- **Fingerprinting**: Fixed crypto pipeline bug in `Fingerprinting.fingerprint/1`; now uses `then(&:crypto.hash(:sha256, &1))` instead of pipe syntax.
+- **Tests**: 73 tests total (13 doctests + 60 unit tests), all passing, zero warnings. Coverage includes fan-out with multiple artifacts/subscribers, CAS deduplication, concurrency gating, task transitions, downstream publish chain, and multi-subscriber independence.
+
+**Files Created/Modified**:
+- `lib/athanor/workflow.ex` — stripped nested Scheduler, added module docs with supervision and messaging diagrams
+- `lib/athanor/workflow/scheduler.ex` — 340 lines, promoted from nested module, fixed bugs, complete fan-out implementation
+- `lib/athanor/workflow/registry.ex` — 165 lines, workflow entity store + subscription derivation
+- `lib/athanor/workflow/dispatcher.ex` — 80 lines, Dispatcher behaviour + StubDispatcher
+- `lib/athanor/workflow/task_monitor.ex` — 170 lines, Elixir Registry wrapper + PID monitor
+- `lib/athanor/workflow/instance.ex` — 45 lines, thin one_for_all Supervisor
+- `lib/athanor/application.ex` — added DynamicSupervisor for workflows
+- `test/athanor/workflow/scheduler_test.exs` — 400+ lines, 60 comprehensive tests
+
 ---
 
 ## Phase 2 — DSL Parser + Deterministic Plan IR
@@ -116,6 +137,10 @@ change.
 
 **Exit Criteria**: Parse `dsl.md` examples into stable IR; runner executes
 Starlark-defined workflows end-to-end with deterministic snapshots
+
+**Status**: ⏳ PENDING (next phase after Phase 1 completion)
+
+**Dependencies**: Phase 1 (AZ-101–105) must be complete and passing all tests before beginning Phase 2.
 
 ---
 
