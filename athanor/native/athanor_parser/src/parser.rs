@@ -25,7 +25,34 @@ use crate::ir::ProcessDescriptor;
 use crate::ir::ResourceDef;
 use crate::ir::WorkflowPlan;
 
-// ── Captured output ──────────────────────────────────────────────────────────
+// ── Name validation ───────────────────────────────────────────────────────────
+
+const MAX_NAME_LEN: usize = 120;
+
+/// Returns `Ok(())` if `name` matches `[a-zA-Z0-9_.]{1,120}`, else an error.
+fn validate_name(name: &str, context: &str) -> anyhow::Result<()> {
+    if name.is_empty() {
+        return Err(anyhow!("{context}: name must not be empty"));
+    }
+    if name.len() > MAX_NAME_LEN {
+        return Err(anyhow!(
+            "{context}: name '{}' exceeds {MAX_NAME_LEN} characters",
+            name
+        ));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+    {
+        return Err(anyhow!(
+            "{context}: name '{name}' contains invalid characters \
+             (allowed: [a-zA-Z0-9_.])"
+        ));
+    }
+    Ok(())
+}
+
+// ── Captured output ───────────────────────────────────────────────────────────
 
 /// Shared mutable state injected via `eval.extra` to capture what the DSL emits.
 #[derive(Debug, Default, ProvidesStaticType)]
@@ -56,7 +83,12 @@ fn starlark_process(builder: &mut GlobalsBuilder) {
     ) -> anyhow::Result<NoneType> {
         let output = extra(eval)?;
         let process_id = output.next_id();
-        let desc = extract_process(process_id, &kwargs)?;
+
+        // Resolve process name: explicit `name=` kwarg takes precedence;
+        // fall back to the enclosing Starlark function name from the call stack.
+        let name = resolve_process_name(&kwargs, eval)?;
+
+        let desc = extract_process(process_id, name, &kwargs)?;
         output.processes.borrow_mut().push(desc);
         Ok(NoneType)
     }
@@ -138,15 +170,67 @@ fn extra<'v, 'a>(eval: &'a Evaluator<'v, '_, '_>) -> anyhow::Result<&'a ParseOut
         .ok_or_else(|| anyhow!("eval.extra wrong type"))
 }
 
-fn extract_process(id: String, kwargs: &DictRef<'_>) -> anyhow::Result<ProcessDescriptor> {
-    let image = require_str(kwargs, "image", &id)?;
-    let command = require_str(kwargs, "command", &id)?;
-    let inputs = extract_inputs(kwargs, &id)?;
-    let outputs = extract_outputs(kwargs, &id)?;
-    let resources = extract_resources(kwargs, &id)?;
+/// Resolve the name for a `process()` call.
+///
+/// Priority:
+/// 1. Explicit `name=` kwarg in `process()`.
+/// 2. The name of the innermost non-`main` user function on the call stack
+///    (i.e. the DSL function that called `process()`).
+///
+/// Returns an error if neither source yields a valid name, or if the name
+/// fails format validation.
+fn resolve_process_name(
+    kwargs: &DictRef<'_>,
+    eval: &Evaluator<'_, '_, '_>,
+) -> anyhow::Result<String> {
+    // 1. Explicit kwarg takes precedence.
+    if let Some(v) = kwargs.get_str("name") {
+        let name = v
+            .unpack_str()
+            .ok_or_else(|| anyhow!("process(): 'name' must be a string"))?
+            .to_owned();
+        validate_name(&name, "process(name=...)")?;
+        return Ok(name);
+    }
+
+    // 2. Walk the call stack from top (innermost) to find the first user
+    //    function that is not `main`. The call stack from the starlark crate
+    //    is ordered outermost-first, so we reverse it.
+    //
+    //    Frames for Rust builtins have `location == None`; we skip those and
+    //    also skip `main` which is just the workflow entry point.
+    let frames = eval.call_stack().into_frames();
+    let name = frames
+        .iter()
+        .rev()
+        .filter(|f| f.location.is_some() && f.name != "main")
+        .map(|f| f.name.clone())
+        .next()
+        .ok_or_else(|| {
+            anyhow!(
+                "process() called outside a named function — \
+                 add an explicit name= kwarg or wrap in a def"
+            )
+        })?;
+
+    validate_name(&name, &format!("function '{name}'"))?;
+    Ok(name)
+}
+
+fn extract_process(
+    id: String,
+    name: String,
+    kwargs: &DictRef<'_>,
+) -> anyhow::Result<ProcessDescriptor> {
+    let image = require_str(kwargs, "image", &name)?;
+    let command = require_str(kwargs, "command", &name)?;
+    let inputs = extract_inputs(kwargs, &name)?;
+    let outputs = extract_outputs(kwargs, &name)?;
+    let resources = extract_resources(kwargs, &name)?;
 
     Ok(ProcessDescriptor {
         id,
+        name,
         image,
         command,
         inputs,
@@ -155,50 +239,55 @@ fn extract_process(id: String, kwargs: &DictRef<'_>) -> anyhow::Result<ProcessDe
     })
 }
 
-fn require_str(kwargs: &DictRef<'_>, key: &str, proc_id: &str) -> anyhow::Result<String> {
+fn require_str(kwargs: &DictRef<'_>, key: &str, proc_name: &str) -> anyhow::Result<String> {
     kwargs
         .get_str(key)
         .and_then(|v| v.unpack_str().map(str::to_owned))
-        .ok_or_else(|| anyhow!("process '{proc_id}': missing or non-string field '{key}'"))
+        .ok_or_else(|| anyhow!("process '{proc_name}': missing or non-string field '{key}'"))
 }
 
-fn extract_inputs(kwargs: &DictRef<'_>, proc_id: &str) -> anyhow::Result<BTreeMap<String, String>> {
+fn extract_inputs(
+    kwargs: &DictRef<'_>,
+    proc_name: &str,
+) -> anyhow::Result<BTreeMap<String, String>> {
     let val = kwargs
         .get_str("inputs")
-        .ok_or_else(|| anyhow!("process '{proc_id}': missing 'inputs'"))?;
+        .ok_or_else(|| anyhow!("process '{proc_name}': missing 'inputs'"))?;
 
     let dict = DictRef::from_value(val)
-        .ok_or_else(|| anyhow!("process '{proc_id}': 'inputs' must be a dict"))?;
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'inputs' must be a dict"))?;
 
     let mut map = BTreeMap::new();
     for (k, v) in dict.iter() {
         let key = k
             .unpack_str()
-            .ok_or_else(|| anyhow!("process '{proc_id}': input key must be a string"))?
+            .ok_or_else(|| anyhow!("process '{proc_name}': input key must be a string"))?
             .to_owned();
         // Input values are channel references at runtime; store their string
-        // representation if available, otherwise record the type name.
+        // representation if available, otherwise record empty string.
         let value = v.unpack_str().unwrap_or("").to_owned();
         map.insert(key, value);
     }
     Ok(map)
 }
 
-fn extract_outputs(kwargs: &DictRef<'_>, proc_id: &str) -> anyhow::Result<OutputDef> {
+fn extract_outputs(kwargs: &DictRef<'_>, proc_name: &str) -> anyhow::Result<OutputDef> {
     let val = kwargs
         .get_str("outputs")
-        .ok_or_else(|| anyhow!("process '{proc_id}': missing 'outputs'"))?;
+        .ok_or_else(|| anyhow!("process '{proc_name}': missing 'outputs'"))?;
 
     if let Some(dict) = DictRef::from_value(val) {
         let mut map = BTreeMap::new();
         for (k, v) in dict.iter() {
             let key = k
                 .unpack_str()
-                .ok_or_else(|| anyhow!("process '{proc_id}': output key must be a string"))?
+                .ok_or_else(|| anyhow!("process '{proc_name}': output key must be a string"))?
                 .to_owned();
             let uri = v
                 .unpack_str()
-                .ok_or_else(|| anyhow!("process '{proc_id}': output '{key}' must be a string URI"))?
+                .ok_or_else(|| {
+                    anyhow!("process '{proc_name}': output '{key}' must be a string URI")
+                })?
                 .to_owned();
             map.insert(key, uri);
         }
@@ -211,40 +300,40 @@ fn extract_outputs(kwargs: &DictRef<'_>, proc_id: &str) -> anyhow::Result<Output
             .map(|v| {
                 v.unpack_str()
                     .map(str::to_owned)
-                    .ok_or_else(|| anyhow!("process '{proc_id}': glob pattern must be a string"))
+                    .ok_or_else(|| anyhow!("process '{proc_name}': glob pattern must be a string"))
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         return Ok(OutputDef::Glob(globs));
     }
 
     Err(anyhow!(
-        "process '{proc_id}': 'outputs' must be a dict or list"
+        "process '{proc_name}': 'outputs' must be a dict or list"
     ))
 }
 
-fn extract_resources(kwargs: &DictRef<'_>, proc_id: &str) -> anyhow::Result<ResourceDef> {
+fn extract_resources(kwargs: &DictRef<'_>, proc_name: &str) -> anyhow::Result<ResourceDef> {
     let val = kwargs
         .get_str("resources")
-        .ok_or_else(|| anyhow!("process '{proc_id}': missing 'resources'"))?;
+        .ok_or_else(|| anyhow!("process '{proc_name}': missing 'resources'"))?;
 
     let dict = DictRef::from_value(val)
-        .ok_or_else(|| anyhow!("process '{proc_id}': 'resources' must be a dict"))?;
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'resources' must be a dict"))?;
 
-    let cpu = extract_num_from_dict(&dict, "cpu", proc_id)?;
-    let mem = extract_num_from_dict(&dict, "mem", proc_id)?;
-    let disk = extract_num_from_dict(&dict, "disk", proc_id)?;
+    let cpu = extract_num_from_dict(&dict, "cpu", proc_name)?;
+    let mem = extract_num_from_dict(&dict, "mem", proc_name)?;
+    let disk = extract_num_from_dict(&dict, "disk", proc_name)?;
 
     Ok(ResourceDef { cpu, mem, disk })
 }
 
 /// Extract a numeric value (int or float) from a DictRef.
-fn extract_num_from_dict(dict: &DictRef<'_>, key: &str, proc_id: &str) -> anyhow::Result<f64> {
+fn extract_num_from_dict(dict: &DictRef<'_>, key: &str, proc_name: &str) -> anyhow::Result<f64> {
     let val = dict
         .get_str(key)
-        .ok_or_else(|| anyhow!("process '{proc_id}': resource '{key}' missing"))?;
+        .ok_or_else(|| anyhow!("process '{proc_name}': resource '{key}' missing"))?;
 
     num_from_value(val)
-        .ok_or_else(|| anyhow!("process '{proc_id}': resource '{key}' must be a number"))
+        .ok_or_else(|| anyhow!("process '{proc_name}': resource '{key}' must be a number"))
 }
 
 fn num_from_value(val: Value<'_>) -> Option<f64> {
