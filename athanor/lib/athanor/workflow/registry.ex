@@ -31,8 +31,10 @@ defmodule Athanor.Workflow.Registry do
           type: :literal | :path | :result
         }
 
-  defmodule WorkflowData,
-    do: defstruct(channels: %{}, processes: %{}, subscriptions: %{}, names_index: %{})
+  defmodule WorkflowData do
+    @moduledoc false
+    defstruct channels: %{}, processes: %{}, subscriptions: %{}, names_index: %{}
+  end
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
