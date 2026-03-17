@@ -3,12 +3,8 @@ defmodule Athanor.Workflow.Dispatcher do
   Behaviour for dispatching job vouchers to Quicksilver workers.
 
   The dispatcher is the single exit point from the control-plane toward the
-  data-plane. Athanor never sends raw data — it sends a voucher containing
-  enough metadata for the worker to fetch its own inputs, execute the task,
-  and publish results back.
-
-  For Phase 1 the `StubDispatcher` is used, which logs the voucher and returns
-  immediately. The real gRPC implementation ships in Phase 5 (AZ-501/502).
+  data-plane. Athanor sends a voucher containing enough metadata for the worker to fetch its own inputs,
+  execute the task, and publish results back.
   """
 
   alias Athanor.Workflow
@@ -61,34 +57,42 @@ defmodule Athanor.Workflow.Dispatcher do
       resources: process.resources
     }
   end
-end
 
-defmodule Athanor.Workflow.StubDispatcher do
-  @moduledoc """
-  Phase 1 stub implementation of `Athanor.Workflow.Dispatcher`.
-
-  Logs the voucher contents so the execution intent is visible during
-  development and testing. Always succeeds, returning the fingerprint as the
-  dispatch ref. The real gRPC implementation replaces this in Phase 5.
-  """
-
-  @behaviour Athanor.Workflow.Dispatcher
-
-  require Logger
-
-  @impl true
   def dispatch(voucher) do
-    Logger.info(
-      "[StubDispatcher] voucher dispatched",
-      workflow_id: voucher.workflow_id,
-      fingerprint: voucher.fingerprint,
-      image: voucher.image,
-      command: voucher.command,
-      input_count: length(voucher.inputs),
-      output_patterns: voucher.output_search_patterns,
-      resources: inspect(voucher.resources)
-    )
+    impl().dispatch(voucher)
+  end
 
-    {:ok, voucher.fingerprint}
+  defp impl() do
+    Application.get_env(:athanor, :dispatcher_impl, Athanor.Workflow.StubDispatcher)
+  end
+
+  defmodule StubDispatcher do
+    @moduledoc """
+    Stub implementation of `Athanor.Workflow.Dispatcher`.
+
+    Logs the voucher contents so the execution intent is visible during
+    development and testing. Always succeeds, returning the fingerprint as the
+    dispatch ref. The real gRPC implementation replaces this in Phase 5.
+    """
+
+    @behaviour Athanor.Workflow.Dispatcher
+
+    require Logger
+
+    @impl true
+    def dispatch(voucher) do
+      Logger.info(
+        "[StubDispatcher] voucher dispatched",
+        workflow_id: voucher.workflow_id,
+        fingerprint: voucher.fingerprint,
+        image: voucher.image,
+        command: voucher.command,
+        input_count: length(voucher.inputs),
+        output_patterns: voucher.output_search_patterns,
+        resources: inspect(voucher.resources)
+      )
+
+      {:ok, voucher.fingerprint}
+    end
   end
 end
