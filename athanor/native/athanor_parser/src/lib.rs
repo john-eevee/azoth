@@ -2,6 +2,7 @@ mod error;
 mod ir;
 mod parser;
 mod serializer;
+mod validator;
 
 use rustler::Atom;
 use rustler::NifResult;
@@ -14,16 +15,36 @@ rustler::atoms! {
 
 /// NIF: parse Starlark DSL source into canonical JSON.
 ///
-/// Returns `{:ok, json_string}` on success or `{:error, reason_string}` on
+/// Returns `{:ok, json_string}` on success or `{:error, errors}` on
 /// any parse or validation failure.
+///
+/// For parse-time errors, returns a single error message string.
+/// For validation errors, returns a list of error message strings.
 #[rustler::nif(schedule = "DirtyCpu")]
 fn parse_workflow(source: String) -> NifResult<(Atom, String)> {
     match parser::parse(&source) {
         Ok(plan) => {
-            let json = serializer::to_canonical_json(&plan);
-            Ok((ok(), json))
+            // Validate the plan
+            match validator::validate_workflow(&plan) {
+                Ok(_) => {
+                    let json = serializer::to_canonical_json(&plan);
+                    Ok((ok(), json))
+                }
+                Err(validation_errors) => {
+                    // Combine all errors into a single string, one per line
+                    let error_msg = validation_errors
+                        .iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    Ok((error(), error_msg))
+                }
+            }
         }
-        Err(e) => Ok((error(), e.to_string())),
+        Err(e) => {
+            // Parse-time error — return as single string
+            Ok((error(), e.to_string()))
+        }
     }
 }
 

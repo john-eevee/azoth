@@ -18,6 +18,7 @@ use starlark::values::UnpackValue;
 use starlark::values::Value;
 
 use crate::error::ValidationError;
+use crate::error::ValidationErrors;
 use crate::ir::ChannelDef;
 use crate::ir::ChannelSource;
 use crate::ir::ChannelType;
