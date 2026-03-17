@@ -8,14 +8,14 @@ defmodule Athanor.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: Athanor.Worker.start_link(arg)
-      # {Athanor.Worker, arg}
+      # One DynamicSupervisor that owns all per-workflow Instance subtrees.
+      # Start a new workflow via:
+      #   DynamicSupervisor.start_child(Athanor.Workflow.Supervisor,
+      #     {Athanor.Workflow.Instance, workflow_id: id})
+      {DynamicSupervisor, name: Athanor.Workflow.Supervisor, strategy: :one_for_one}
     ]
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Athanor.Supervisor]
     Supervisor.start_link(children, opts)
-    :foo
   end
 end

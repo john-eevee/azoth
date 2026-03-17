@@ -22,7 +22,8 @@ defmodule Athanor.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ecto, "~> 3.13"}
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false, warn_if_outdated: true},
+      {:uniq, "~> 0.6"}
     ]
   end
 end
