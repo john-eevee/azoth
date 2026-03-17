@@ -6,10 +6,10 @@ defmodule Athanor.Workflow.Instance do
   workflow is submitted. Supervises three sibling processes that all share the
   same `workflow_id`:
 
-    - `Athanor.Workflow.Registry`    — channel/process definitions + subscription graph
-    - `Athanor.Workflow.TaskMonitor` backing Registry (Elixir Registry, must start first)
-    - `Athanor.Workflow.TaskMonitor` GenServer — PID monitor + crash escalation
-    - `Athanor.Workflow.Scheduler`   — reactive fan-out, concurrency gate, dispatch
+    - `Athanor.Workflow.Registry`:    channel/process definitions + subscription graph
+    - `Athanor.Workflow.TaskMonitor`: backing Registry (Elixir Registry, must start first)
+    - `Athanor.Workflow.TaskMonitor`: PID monitor + crash escalation
+    - `Athanor.Workflow.Scheduler`:   reactive fan-out, concurrency gate, dispatch
 
   ## Usage
 
@@ -40,7 +40,6 @@ defmodule Athanor.Workflow.Instance do
     workflow_id = Keyword.fetch!(opts, :workflow_id)
 
     children = [
-      # Registry must start before the TaskMonitor GenServer that calls into it.
       TaskMonitor.registry_child_spec(workflow_id),
       {WorkflowRegistry, workflow_id: workflow_id},
       {TaskMonitor, workflow_id: workflow_id},
