@@ -74,6 +74,13 @@ pub enum ValidationError {
     #[error("workflow() is missing required keyword '{keyword}'")]
     WorkflowMissingKeyword { keyword: &'static str },
 
+    /// Two processes in the same workflow share the same name.
+    #[error(
+        "workflow '{workflow_name}': duplicate process name '{name}' \
+         (process names must be unique within a workflow)"
+    )]
+    DuplicateProcessName { workflow_name: String, name: String },
+
     /// An internal extraction invariant was violated.
     #[error("internal extraction error: {message}")]
     ExtractionError { message: String },

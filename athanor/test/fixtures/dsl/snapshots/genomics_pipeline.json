@@ -27,7 +27,7 @@
         "reads": "s3://my-bucket/data/sample_R1.fq.gz",
         "ref": "s3://my-bucket/refs/hg38.fa"
       },
-      "name": "process",
+      "name": "align",
       "outputs": {
         "type": "static",
         "value": {
@@ -48,7 +48,7 @@
         "bam": "s3://my-bucket/aligned/sample_R1.bam",
         "ref": "s3://my-bucket/refs/hg38.fa"
       },
-      "name": "process",
+      "name": "call_variants",
       "outputs": {
         "type": "static",
         "value": {
@@ -68,7 +68,7 @@
       "inputs": {
         "vcfs": "s3://my-bucket/variants/sample_R1.vcf.gz"
       },
-      "name": "process",
+      "name": "merge_vcfs",
       "outputs": {
         "type": "static",
         "value": {

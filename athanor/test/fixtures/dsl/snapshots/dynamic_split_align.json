@@ -26,7 +26,7 @@
       "inputs": {
         "ref": "s3://my-bucket/refs/hg38.fa"
       },
-      "name": "process",
+      "name": "split_genome",
       "outputs": {
         "type": "glob",
         "value": [
@@ -47,7 +47,7 @@
         "chunk": "s3://my-bucket/refs/chr1.fa",
         "reads": "s3://my-bucket/data/sample_R1.fq.gz"
       },
-      "name": "process",
+      "name": "align_chunk",
       "outputs": {
         "type": "static",
         "value": {

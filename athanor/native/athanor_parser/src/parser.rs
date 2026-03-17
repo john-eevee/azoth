@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 use anyhow::anyhow;
 use starlark::any::ProvidesStaticType;
@@ -194,16 +195,18 @@ fn resolve_process_name(
     }
 
     // 2. Walk the call stack from top (innermost) to find the first user
-    //    function that is not `main`. The call stack from the starlark crate
-    //    is ordered outermost-first, so we reverse it.
+    //    function that is not `main` or the `process` builtin itself.
+    //    The call stack from the starlark crate is ordered outermost-first,
+    //    so we reverse it.
     //
-    //    Frames for Rust builtins have `location == None`; we skip those and
-    //    also skip `main` which is just the workflow entry point.
+    //    Frames for Rust builtins have `location == None`; we skip those.
+    //    We also skip `main` (the workflow entry point) and `process` (the
+    //    NIF builtin whose frame sits innermost on the stack).
     let frames = eval.call_stack().into_frames();
     let name = frames
         .iter()
         .rev()
-        .filter(|f| f.location.is_some() && f.name != "main")
+        .filter(|f| f.location.is_some() && f.name != "main" && f.name != "process")
         .map(|f| f.name.clone())
         .next()
         .ok_or_else(|| {
@@ -389,10 +392,24 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
         .clone()
         .ok_or(ValidationError::NoWorkflowFound)?;
 
+    let processes = output.processes.into_inner();
+
+    // Reject workflows where two processes share the same name — names must be
+    // unique within a workflow so the registry lookup is unambiguous.
+    let mut seen: HashSet<&str> = HashSet::new();
+    for proc in &processes {
+        if !seen.insert(proc.name.as_str()) {
+            return Err(ValidationError::DuplicateProcessName {
+                workflow_name: name.clone(),
+                name: proc.name.clone(),
+            });
+        }
+    }
+
     Ok(WorkflowPlan {
         version: 1,
         name,
-        processes: output.processes.into_inner(),
+        processes,
         channels: output.channels.into_inner(),
     })
 }

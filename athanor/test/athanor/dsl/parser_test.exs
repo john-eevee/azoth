@@ -68,5 +68,60 @@ defmodule Athanor.DSL.ParserTest do
       src = ~s[workflow(name = "x")]
       assert {:error, _reason} = Parser.parse(src)
     end
+
+    test "duplicate process name via function name returns error" do
+      src = """
+      def align(ref):
+          process(
+              image     = "img:1",
+              command   = "run",
+              inputs    = {"ref": ref},
+              outputs   = {"out": "s3://b/out"},
+              resources = {"cpu": 1, "mem": 1.0, "disk": 1.0},
+          )
+
+      def main():
+          align("a")
+          align("b")
+          workflow(name = "dup_test")
+      """
+
+      assert {:error, reason} = Parser.parse(src)
+      assert reason =~ "duplicate process name"
+      assert reason =~ "align"
+    end
+
+    test "duplicate process name via explicit name= kwarg returns error" do
+      src = """
+      def step_a():
+          process(
+              name      = "my_step",
+              image     = "img:1",
+              command   = "run",
+              inputs    = {},
+              outputs   = {"out": "s3://b/out"},
+              resources = {"cpu": 1, "mem": 1.0, "disk": 1.0},
+          )
+
+      def step_b():
+          process(
+              name      = "my_step",
+              image     = "img:2",
+              command   = "run",
+              inputs    = {},
+              outputs   = {"out": "s3://b/out2"},
+              resources = {"cpu": 1, "mem": 1.0, "disk": 1.0},
+          )
+
+      def main():
+          step_a()
+          step_b()
+          workflow(name = "dup_kwarg_test")
+      """
+
+      assert {:error, reason} = Parser.parse(src)
+      assert reason =~ "duplicate process name"
+      assert reason =~ "my_step"
+    end
   end
 end
