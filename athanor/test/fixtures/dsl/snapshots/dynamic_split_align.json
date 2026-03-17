@@ -1,0 +1,63 @@
+{
+  "channels": [
+    {
+      "channel_type": "literal",
+      "id": "id_0",
+      "source": {
+        "kind": "literal",
+        "value": "s3://my-bucket/refs/hg38.fa"
+      }
+    },
+    {
+      "channel_type": "literal",
+      "id": "id_1",
+      "source": {
+        "kind": "literal",
+        "value": "s3://my-bucket/data/sample_R1.fq.gz"
+      }
+    }
+  ],
+  "name": "dynamic_split_align",
+  "processes": [
+    {
+      "command": "split_tool {ref} --output-dir ./chunks/",
+      "id": "id_2",
+      "image": "genomics/tools:latest",
+      "inputs": {
+        "ref": "s3://my-bucket/refs/hg38.fa"
+      },
+      "outputs": {
+        "type": "glob",
+        "value": [
+          "./chunks/*.fa"
+        ]
+      },
+      "resources": {
+        "cpu": 2.0,
+        "disk": 20.0,
+        "mem": 4.0
+      }
+    },
+    {
+      "command": "bwa mem -t {cpu} {chunk} {reads} -o {output}",
+      "id": "id_3",
+      "image": "genomics/bwa:0.7.17",
+      "inputs": {
+        "chunk": "s3://my-bucket/refs/chr1.fa",
+        "reads": "s3://my-bucket/data/sample_R1.fq.gz"
+      },
+      "outputs": {
+        "type": "static",
+        "value": {
+          "output": "s3://my-bucket/aligned/{chunk.stem}.bam"
+        }
+      },
+      "resources": {
+        "cpu": 8.0,
+        "disk": 50.0,
+        "mem": 16.0
+      }
+    }
+  ],
+  "version": 1
+}

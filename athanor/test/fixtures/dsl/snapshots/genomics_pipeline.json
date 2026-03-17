@@ -1,0 +1,83 @@
+{
+  "channels": [
+    {
+      "channel_type": "literal",
+      "id": "id_0",
+      "source": {
+        "kind": "literal",
+        "value": "s3://my-bucket/refs/hg38.fa"
+      }
+    },
+    {
+      "channel_type": "path",
+      "id": "id_1",
+      "source": {
+        "glob": "s3://my-bucket/data/*.fastq.gz",
+        "kind": "from_path"
+      }
+    }
+  ],
+  "name": "genomics_pipeline",
+  "processes": [
+    {
+      "command": "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
+      "id": "id_2",
+      "image": "genomics/bwa:0.7.17",
+      "inputs": {
+        "reads": "s3://my-bucket/data/sample_R1.fq.gz",
+        "ref": "s3://my-bucket/refs/hg38.fa"
+      },
+      "outputs": {
+        "type": "static",
+        "value": {
+          "output": "s3://my-bucket/aligned/{reads.stem}.bam"
+        }
+      },
+      "resources": {
+        "cpu": 8.0,
+        "disk": 50.0,
+        "mem": 16.0
+      }
+    },
+    {
+      "command": "gatk HaplotypeCaller -R {ref} -I {bam} -O {vcf}",
+      "id": "id_3",
+      "image": "genomics/gatk:4.4",
+      "inputs": {
+        "bam": "s3://my-bucket/aligned/sample_R1.bam",
+        "ref": "s3://my-bucket/refs/hg38.fa"
+      },
+      "outputs": {
+        "type": "static",
+        "value": {
+          "vcf": "s3://my-bucket/variants/{bam.stem}.vcf.gz"
+        }
+      },
+      "resources": {
+        "cpu": 4.0,
+        "disk": 20.0,
+        "mem": 32.0
+      }
+    },
+    {
+      "command": "bcftools merge {vcfs} -o {merged}",
+      "id": "id_4",
+      "image": "genomics/bcftools:1.18",
+      "inputs": {
+        "vcfs": "s3://my-bucket/variants/sample_R1.vcf.gz"
+      },
+      "outputs": {
+        "type": "static",
+        "value": {
+          "merged": "s3://my-bucket/cohort/merged.vcf.gz"
+        }
+      },
+      "resources": {
+        "cpu": 2.0,
+        "disk": 10.0,
+        "mem": 8.0
+      }
+    }
+  ],
+  "version": 1
+}

@@ -23,7 +23,9 @@ defmodule Athanor.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.40", only: :dev, runtime: false, warn_if_outdated: true},
-      {:uniq, "~> 0.6"}
+      {:uniq, "~> 0.6"},
+      {:rustler, "~> 0.36", runtime: false},
+      {:jason, "~> 1.4"}
     ]
   end
 end
