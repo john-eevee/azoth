@@ -102,6 +102,17 @@ defmodule Athanor.Workflow.Registry do
     GenServer.call(server_name(workflow_id), {:get_process, process_id})
   end
 
+  @doc """
+  Fetch a single process definition by name within a workflow, or `nil` if not found.
+
+  Process names are cosmetic labels unique within a workflow. Returns `nil` if the
+  name is not found or the workflow is not registered.
+  """
+  @spec get_process_by_name(Workflow.id(), String.t()) :: Workflow.process() | nil
+  def get_process_by_name(workflow_id, name) do
+    GenServer.call(server_name(workflow_id), {:get_process_by_name, name})
+  end
+
   @doc "Fetch all registered channel metadata."
   @spec get_channels(Workflow.id()) :: %{Workflow.channel_id() => channel_meta()}
   def get_channels(workflow_id) do
@@ -140,6 +151,17 @@ defmodule Athanor.Workflow.Registry do
 
   def handle_call({:get_process, process_id}, _from, state) do
     {:reply, Map.get(state.processes, process_id), state}
+  end
+
+  def handle_call({:get_process_by_name, name}, _from, state) do
+    # Linear search through processes to find one with matching name.
+    # Names are unique within a workflow, so we return the first match or nil.
+    process =
+      Enum.find_value(state.processes, nil, fn {_process_id, process} ->
+        process.name == name && process
+      end)
+
+    {:reply, process, state}
   end
 
   def handle_call(:get_channels, _from, state) do

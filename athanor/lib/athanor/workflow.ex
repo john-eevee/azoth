@@ -81,6 +81,7 @@ defmodule Athanor.Workflow do
   @type channel_subscriptions() :: {channel_id(), [subscription()]}
 
   @type process() :: %{
+          name: String.t(),
           image: String.t(),
           command: String.t(),
           input: %{String.t() => channel_id()},

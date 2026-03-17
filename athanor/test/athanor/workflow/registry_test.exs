@@ -14,6 +14,7 @@ defmodule Athanor.Workflow.RegistryTest do
 
   defp process(image, command, input_map, output_patterns \\ []) do
     %{
+      name: "process_#{:rand.uniform(100_000)}",
       image: image,
       command: command,
       input: input_map,
@@ -108,6 +109,53 @@ defmodule Athanor.Workflow.RegistryTest do
 
       :ok = WorkflowRegistry.register_workflow(wid, %{ch => meta}, %{})
       assert WorkflowRegistry.get_channels(wid) == %{ch => meta}
+    end
+  end
+
+  describe "get_process_by_name/2" do
+    test "returns the process definition for a known name" do
+      wid = unique_id()
+      start_registry(wid)
+      p = unique_id()
+      proc = %{process("my/image:1", "run.sh", %{}) | name: "align"}
+
+      :ok = WorkflowRegistry.register_workflow(wid, %{}, %{p => proc})
+
+      assert WorkflowRegistry.get_process_by_name(wid, "align") == proc
+    end
+
+    test "returns nil for an unknown process name" do
+      wid = unique_id()
+      start_registry(wid)
+      p = unique_id()
+      proc = %{process("my/image:1", "run.sh", %{}) | name: "align"}
+
+      :ok = WorkflowRegistry.register_workflow(wid, %{}, %{p => proc})
+
+      assert WorkflowRegistry.get_process_by_name(wid, "unknown") == nil
+    end
+
+    test "returns correct process when multiple processes exist" do
+      wid = unique_id()
+      start_registry(wid)
+      p1 = unique_id()
+      p2 = unique_id()
+      p3 = unique_id()
+
+      proc1 = %{process("img:1", "cmd", %{}) | name: "align"}
+      proc2 = %{process("img:2", "cmd", %{}) | name: "call_variants"}
+      proc3 = %{process("img:3", "cmd", %{}) | name: "merge"}
+
+      :ok =
+        WorkflowRegistry.register_workflow(
+          wid,
+          %{},
+          %{p1 => proc1, p2 => proc2, p3 => proc3}
+        )
+
+      assert WorkflowRegistry.get_process_by_name(wid, "call_variants") == proc2
+      assert WorkflowRegistry.get_process_by_name(wid, "align") == proc1
+      assert WorkflowRegistry.get_process_by_name(wid, "merge") == proc3
     end
   end
 end
