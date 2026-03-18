@@ -226,57 +226,85 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
 
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
-      # Currently channels are indexed by ID, but inputs/outputs are matched by the
-      # string URI representation in this version of the prototype.
       channels_by_id =
         Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
 
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
 
-      # Get registered processes
       proc1 = Registry.get_process_by_name(wid, "process_one")
       proc2 = Registry.get_process_by_name(wid, "process_two")
 
       assert proc1 != nil
       assert proc2 != nil
 
-      # The output value from proc1's "out_val" ("s3://bucket/test.txt")
-      # should exactly match the input value for proc2's "in2_val"
-
-      # For process 1, verify the output matches
-      # The DSL parser puts outputs in the plan struct under :outputs key
       dsl_proc1 = Enum.find(plan.processes, &(&1.name == "process_one"))
       assert dsl_proc1.outputs.value[:out_val] == "s3://bucket/test.txt"
 
-      # For process 2, verify its input "in2_val" binds to the exact same URI string
       assert proc2.input[:in2_val] == "s3://bucket/test.txt"
 
-      # Check subscriptions. derive_subscriptions should have mapped the string URI 
-      # "s3://bucket/test.txt" to process_two.
       subscriptions = Registry.get_subscriptions(wid)
 
-      # Process 2 should be subscribed to the channel "s3://bucket/test.txt"
-      # Just sanity check the name
-      assert proc2.name in ["process_two"]
-
-      # Note: Subscriptions store the internal process IDs, not names.
-      assert proc2.name == "process_two"
-      assert proc1.name == "process_one"
-
-      # Assert that proc2's ID is in the subscription list for the URI it listens on
-      assert proc2.name == "process_two"
-      proc2_id_in_subscriptions = subscriptions["s3://bucket/test.txt"] || []
-
-      # Find proc2.id dynamically
       proc2_internal_id =
         Enum.find_value(plan.processes, fn p ->
           if p.name == "process_two", do: p.id, else: nil
         end)
 
+      proc2_id_in_subscriptions = subscriptions["s3://bucket/test.txt"] || []
       assert proc2_internal_id in proc2_id_in_subscriptions
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Reactive Glob DAG integration test
+  # ---------------------------------------------------------------------------
+
+  describe "reactive glob DAG execution setup" do
+    test "processes can output globs and consumers subscribe to glob channels" do
+      {:ok, plan} = Parser.parse(fixture("reactive_glob_dag.star"))
+
+      wid = Uniq.UUID.uuid7()
+      start_supervised!(TaskMonitor.registry_child_spec(wid))
+      start_supervised!({TaskMonitor, workflow_id: wid})
+      start_supervised!({Registry, workflow_id: wid})
+
+      processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
+
+      channels_by_id =
+        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+
+      Registry.register_workflow(wid, channels_by_id, processes_by_id)
+
+      # Validate producer outputs a glob
+      producer = Enum.find(plan.processes, &(&1.name == "producer"))
+      assert producer.outputs.type == "glob"
+      assert producer.outputs.value == ["s3://bucket/out/*.txt"]
+
+      # Validate consumer reads from the glob string directly
+      consumer = Registry.get_process_by_name(wid, "consumer")
+      assert consumer.input[:input] == "s3://bucket/out/*.txt"
+
+      # Validate channel from_path was generated
+      glob_channel = Enum.find(plan.channels, &(&1.channel_type == "path"))
+      assert glob_channel != nil
+      assert glob_channel.source.kind == "from_path"
+      assert glob_channel.source.glob == "s3://bucket/out/*.txt"
+
+      # Check subscriptions
+      subscriptions = Registry.get_subscriptions(wid)
+
+      consumer_id =
+        Enum.find_value(plan.processes, fn p ->
+          if p.name == "consumer", do: p.id, else: nil
+        end)
+
+      # The consumer should be subscribed to the literal glob string, enabling the scheduler
+      # to match emitted globs from the producer to this channel dynamically.
+      assert consumer_id in (subscriptions["s3://bucket/out/*.txt"] || [])
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Helpers
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
