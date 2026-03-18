@@ -6,7 +6,6 @@ use thiserror::Error;
 /// human-readable diagnostic without additional lookups.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum ValidationError {
-    
     /// A required field is absent on the given process.
     #[error("process '{process_id}': missing required field '{field}'")]
     MissingField {
@@ -60,7 +59,7 @@ pub enum ValidationError {
         resource: &'static str,
         value: f64,
     },
-    
+
     /// The Starlark source could not be parsed or evaluated.
     #[error("starlark evaluation failed: {message}")]
     StarlarkError { message: String },

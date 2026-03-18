@@ -36,10 +36,10 @@ fn validate_process(process: &ProcessDescriptor) -> ValidationErrors {
     let mut errors = Vec::new();
 
     // Check required fields
-    if process.image.is_empty() {
+    if process.image.tag.is_empty() {
         errors.push(ValidationError::EmptyField {
             process_id: process.id.clone(),
-            field: "image",
+            field: "image.tag",
         });
     }
 

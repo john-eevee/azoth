@@ -15,7 +15,7 @@ defmodule Athanor.DSL.ParserTest do
 
     test "process IDs are align, call_variants, merge_vcfs by order" do
       {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
-      names = Enum.map(plan.processes, & &1.image)
+      names = Enum.map(plan.processes, & &1.image.tag)
 
       assert "genomics/bwa:0.7.17" in names
       assert "genomics/gatk:4.4" in names
@@ -35,7 +35,7 @@ defmodule Athanor.DSL.ParserTest do
 
     test "align process has static OutputDef" do
       {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
-      align = Enum.find(plan.processes, &(&1.image == "genomics/bwa:0.7.17"))
+      align = Enum.find(plan.processes, &(&1.image.tag == "genomics/bwa:0.7.17"))
       assert align.outputs.type == "static"
     end
   end
@@ -48,7 +48,7 @@ defmodule Athanor.DSL.ParserTest do
 
     test "split_genome process has glob OutputDef" do
       {:ok, plan} = Parser.parse(fixture("dynamic_split_align.star"))
-      split = Enum.find(plan.processes, &(&1.image == "genomics/tools:latest"))
+      split = Enum.find(plan.processes, &(&1.image.tag == "genomics/tools:latest"))
       assert split.outputs.type == "glob"
     end
 

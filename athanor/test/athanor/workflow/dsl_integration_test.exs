@@ -51,7 +51,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       for process <- plan.processes do
         registered_proc = Registry.get_process(wid, process.id)
         assert registered_proc != nil, "Process #{process.id} not found in registry"
-        assert registered_proc.image == process.image
+        assert registered_proc.image == process.image.tag
         assert registered_proc.command == process.command
       end
 
@@ -322,7 +322,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   defp dsl_process_to_runtime(dsl_proc) do
     %{
       name: dsl_proc.name,
-      image: dsl_proc.image,
+      image: dsl_proc.image.tag,
       command: dsl_proc.command,
       input: dsl_proc.inputs || %{},
       output_search_patterns: [],

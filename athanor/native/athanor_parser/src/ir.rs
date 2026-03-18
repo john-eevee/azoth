@@ -3,6 +3,13 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde::Serialize;
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageDef {
+    pub tag: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
+}
+
 /// A single declared process in a workflow.
 ///
 /// BTreeMap is used for `inputs` so iteration order is deterministic,
@@ -18,7 +25,7 @@ pub struct ProcessDescriptor {
     /// overridden by an explicit `name=` kwarg in the `process()` call.
     /// Format: `[a-zA-Z0-9_.]{1,120}`.
     pub name: String,
-    pub image: String,
+    pub image: ImageDef,
     pub command: String,
     /// Sorted map of input-name → ArtifactRef URI / channel item placeholder.
     pub inputs: BTreeMap<String, String>,

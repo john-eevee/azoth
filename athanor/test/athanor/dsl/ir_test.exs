@@ -48,7 +48,7 @@ defmodule Athanor.DSL.IRTest do
 
     test "ResourceDef has cpu, mem, disk as numbers" do
       {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
-      align = Enum.find(plan.processes, &(&1.image == "genomics/bwa:0.7.17"))
+      align = Enum.find(plan.processes, &(&1.image.tag == "genomics/bwa:0.7.17"))
       assert align.resources.cpu == 8.0
       assert align.resources.mem == 16.0
       assert align.resources.disk == 50.0
@@ -56,14 +56,14 @@ defmodule Athanor.DSL.IRTest do
 
     test "static OutputDef carries named URI map" do
       {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
-      align = Enum.find(plan.processes, &(&1.image == "genomics/bwa:0.7.17"))
+      align = Enum.find(plan.processes, &(&1.image.tag == "genomics/bwa:0.7.17"))
       # Jason decodes with keys: :atoms, so map keys are atoms.
       assert align.outputs.value[:output] =~ "s3://my-bucket/aligned/"
     end
 
     test "glob OutputDef carries list of patterns" do
       {:ok, plan} = Parser.parse(fixture("dynamic_split_align.star"))
-      split = Enum.find(plan.processes, &(&1.image == "genomics/tools:latest"))
+      split = Enum.find(plan.processes, &(&1.image.tag == "genomics/tools:latest"))
       assert is_list(split.outputs.value)
       assert hd(split.outputs.value) == "./chunks/*.fa"
     end

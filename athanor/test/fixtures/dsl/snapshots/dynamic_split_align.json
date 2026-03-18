@@ -38,7 +38,9 @@
     {
       "command": "split_tool {ref} --output-dir ./chunks/",
       "id": "id_2",
-      "image": "genomics/tools:latest",
+      "image": {
+        "tag": "genomics/tools:latest"
+      },
       "inputs": {
         "ref": "id_0"
       },
@@ -58,7 +60,9 @@
     {
       "command": "bwa mem -t {cpu} {chunk} {reads} -o {output}",
       "id": "id_3",
-      "image": "genomics/bwa:0.7.17",
+      "image": {
+        "tag": "genomics/bwa:0.7.17"
+      },
       "inputs": {
         "chunk": "chan_id_2",
         "reads": "id_1"

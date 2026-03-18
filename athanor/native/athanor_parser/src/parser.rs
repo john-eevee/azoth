@@ -24,6 +24,7 @@ use crate::error::ValidationErrors;
 use crate::ir::ChannelDef;
 use crate::ir::ChannelSource;
 use crate::ir::ChannelType;
+use crate::ir::ImageDef;
 use crate::ir::OutputDef;
 use crate::ir::ProcessDescriptor;
 use crate::ir::ResourceDef;
@@ -234,7 +235,7 @@ fn extract_process(
     name: String,
     kwargs: &DictRef<'_>,
 ) -> anyhow::Result<ProcessDescriptor> {
-    let image = require_str(kwargs, "image", &name)?;
+    let image = extract_image(kwargs, &name)?;
     let command = require_str(kwargs, "command", &name)?;
     let inputs = extract_inputs(kwargs, &name)?;
     let outputs = extract_outputs(kwargs, &name)?;
@@ -249,6 +250,47 @@ fn extract_process(
         outputs,
         resources,
     })
+}
+
+fn extract_image(kwargs: &DictRef<'_>, proc_name: &str) -> anyhow::Result<ImageDef> {
+    let val = kwargs
+        .get_str("image")
+        .ok_or_else(|| anyhow!("process '{proc_name}': missing 'image'"))?;
+
+    // Fast path: string literal
+    if let Some(s) = val.unpack_str() {
+        return Ok(ImageDef {
+            tag: s.to_owned(),
+            checksum: None,
+        });
+    }
+
+    // Object/Dict form: { "tag": "...", "checksum": "..." }
+    if let Some(dict) = DictRef::from_value(val) {
+        let tag = dict
+            .get_str("tag")
+            .ok_or_else(|| anyhow!("process '{proc_name}': 'image' dict missing 'tag'"))?
+            .unpack_str()
+            .ok_or_else(|| anyhow!("process '{proc_name}': 'image.tag' must be a string"))?
+            .to_owned();
+
+        let checksum = dict
+            .get_str("checksum")
+            .map(|v| {
+                v.unpack_str()
+                    .ok_or_else(|| {
+                        anyhow!("process '{proc_name}': 'image.checksum' must be a string")
+                    })
+                    .map(str::to_owned)
+            })
+            .transpose()?;
+
+        return Ok(ImageDef { tag, checksum });
+    }
+
+    Err(anyhow!(
+        "process '{proc_name}': 'image' must be a string or a dict"
+    ))
 }
 
 fn require_str(kwargs: &DictRef<'_>, key: &str, proc_name: &str) -> anyhow::Result<String> {

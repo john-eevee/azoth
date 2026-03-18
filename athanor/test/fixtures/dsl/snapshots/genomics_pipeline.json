@@ -46,7 +46,9 @@
     {
       "command": "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
       "id": "id_2",
-      "image": "genomics/bwa:0.7.17",
+      "image": {
+        "tag": "genomics/bwa:0.7.17"
+      },
       "inputs": {
         "reads": "id_1",
         "ref": "id_0"
@@ -67,7 +69,9 @@
     {
       "command": "gatk HaplotypeCaller -R {ref} -I {bam} -O {vcf}",
       "id": "id_3",
-      "image": "genomics/gatk:4.4",
+      "image": {
+        "tag": "genomics/gatk:4.4"
+      },
       "inputs": {
         "bam": "chan_id_2",
         "ref": "id_0"
@@ -88,7 +92,9 @@
     {
       "command": "bcftools merge {vcfs} -o {merged}",
       "id": "id_4",
-      "image": "genomics/bcftools:1.18",
+      "image": {
+        "tag": "genomics/bcftools:1.18"
+      },
       "inputs": {
         "vcfs": "chan_id_3"
       },
