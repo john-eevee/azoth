@@ -222,4 +222,70 @@ defmodule Athanor.Workflow.SchedulerTest do
       assert p2 in process_ids
     end
   end
+
+  describe "edge cases and errors" do
+    import ExUnit.CaptureLog
+
+    test "publish/3 accepts a single artifact instead of a list" do
+      {_wid, sched} = start_instance()
+      ch = unique_id()
+      p = unique_id()
+
+      Scheduler.register_process(sched, p, process())
+      Scheduler.subscribe(sched, ch, p)
+
+      Scheduler.publish(sched, ch, artifact("s3://single.txt"))
+      :sys.get_state(sched)
+
+      state = :sys.get_state(sched)
+      assert map_size(state.running_tasks) == 1
+    end
+
+    test "complete_task/3 on unknown fingerprint logs warning" do
+      {_wid, sched} = start_instance()
+
+      log =
+        capture_log(fn ->
+          Scheduler.complete_task(sched, "unknown_fp")
+          :sys.get_state(sched)
+        end)
+
+      assert log =~ "complete_task called for unknown fingerprint unknown_fp"
+    end
+
+    test "fail_task/2 on unknown fingerprint logs warning" do
+      {_wid, sched} = start_instance()
+
+      log =
+        capture_log(fn ->
+          Scheduler.fail_task(sched, "unknown_fp")
+          :sys.get_state(sched)
+        end)
+
+      assert log =~ "fail_task called for unknown fingerprint unknown_fp"
+    end
+
+    test "fan_out skipping unknown process_id logs warning" do
+      {_wid, sched} = start_instance()
+      ch = unique_id()
+
+      Scheduler.subscribe(sched, ch, "unknown_process")
+
+      log =
+        capture_log(fn ->
+          Scheduler.publish(sched, ch, [artifact("s3://test.txt")])
+          :sys.get_state(sched)
+        end)
+
+      assert log =~ "fan_out skipping unknown process_id"
+    end
+
+    test "handle_cast(:dispatch_next) when queue is empty does nothing" do
+      {_wid, sched} = start_instance()
+      GenServer.cast(sched, :dispatch_next)
+
+      state = :sys.get_state(sched)
+      assert :queue.is_empty(state.queue)
+    end
+  end
 end

@@ -158,4 +158,14 @@ defmodule Athanor.Workflow.RegistryTest do
       assert WorkflowRegistry.get_process_by_name(wid, "merge") == proc3
     end
   end
+
+  describe "not found cases" do
+    test "returns defaults when workflow is not found" do
+      bad_id = "unknown_workflow"
+      assert WorkflowRegistry.get_subscriptions(bad_id) == %{}
+      assert WorkflowRegistry.get_process(bad_id, "any") == nil
+      assert WorkflowRegistry.get_process_by_name(bad_id, "any") == nil
+      assert WorkflowRegistry.get_channels(bad_id) == %{}
+    end
+  end
 end
