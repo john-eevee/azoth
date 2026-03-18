@@ -240,7 +240,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       dsl_proc1 = Enum.find(plan.processes, &(&1.name == "process_one"))
       assert dsl_proc1.outputs.value[:out_val] == "s3://bucket/test.txt"
 
-      assert proc2.input[:in2_val] == "s3://bucket/test.txt"
+      assert String.starts_with?(proc2.input[:in2_val], "chan_")
 
       subscriptions = Registry.get_subscriptions(wid)
 
@@ -249,7 +249,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
           if p.name == "process_two", do: p.id, else: nil
         end)
 
-      proc2_id_in_subscriptions = subscriptions["s3://bucket/test.txt"] || []
+      proc2_id_in_subscriptions = subscriptions[proc2.input[:in2_val]] || []
       assert proc2_internal_id in proc2_id_in_subscriptions
     end
   end
@@ -279,15 +279,13 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       assert producer.outputs.type == "glob"
       assert producer.outputs.value == ["s3://bucket/out/*.txt"]
 
-      # Validate consumer reads from the glob string directly
+      # Validate consumer reads from the producer channel directly
       consumer = Registry.get_process_by_name(wid, "consumer")
-      assert consumer.input[:input] == "s3://bucket/out/*.txt"
+      assert String.starts_with?(consumer.input[:input], "chan_")
 
-      # Validate channel from_path was generated
+      # Validate no channel from_path was generated (it was removed in the refactor)
       glob_channel = Enum.find(plan.channels, &(&1.channel_type == "path"))
-      assert glob_channel != nil
-      assert glob_channel.source.kind == "from_path"
-      assert glob_channel.source.glob == "s3://bucket/out/*.txt"
+      assert glob_channel == nil
 
       # Check subscriptions
       subscriptions = Registry.get_subscriptions(wid)
@@ -297,9 +295,8 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
           if p.name == "consumer", do: p.id, else: nil
         end)
 
-      # The consumer should be subscribed to the literal glob string, enabling the scheduler
-      # to match emitted globs from the producer to this channel dynamically.
-      assert consumer_id in (subscriptions["s3://bucket/out/*.txt"] || [])
+      # The consumer should be subscribed to the producer's output channel
+      assert consumer_id in (subscriptions[consumer.input[:input]] || [])
     end
   end
 

@@ -15,6 +15,22 @@
         "kind": "literal",
         "value": "s3://my-bucket/data/sample_R1.fq.gz"
       }
+    },
+    {
+      "channel_type": "result",
+      "id": "chan_id_2",
+      "source": {
+        "kind": "result",
+        "process_id": "id_2"
+      }
+    },
+    {
+      "channel_type": "result",
+      "id": "chan_id_3",
+      "source": {
+        "kind": "result",
+        "process_id": "id_3"
+      }
     }
   ],
   "name": "dynamic_split_align",
@@ -24,7 +40,7 @@
       "id": "id_2",
       "image": "genomics/tools:latest",
       "inputs": {
-        "ref": "s3://my-bucket/refs/hg38.fa"
+        "ref": "id_0"
       },
       "name": "split_genome",
       "outputs": {
@@ -44,8 +60,8 @@
       "id": "id_3",
       "image": "genomics/bwa:0.7.17",
       "inputs": {
-        "chunk": "s3://my-bucket/refs/chr1.fa",
-        "reads": "s3://my-bucket/data/sample_R1.fq.gz"
+        "chunk": "chan_id_2",
+        "reads": "id_1"
       },
       "name": "align_chunk",
       "outputs": {

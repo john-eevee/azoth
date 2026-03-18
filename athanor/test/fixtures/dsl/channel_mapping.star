@@ -1,5 +1,5 @@
 def process_one(in_val):
-    process(
+    return process(
         image = "test:v1",
         command = "echo {in_val} > {out_val}",
         inputs = {"in_val": in_val},
@@ -8,7 +8,7 @@ def process_one(in_val):
     )
 
 def process_two(in2_val):
-    process(
+    return process(
         image = "test:v1",
         command = "cat {in2_val}",
         inputs = {"in2_val": in2_val},
@@ -17,13 +17,9 @@ def process_two(in2_val):
     )
 
 def main():
-    workflow(
-        name = "channel_mapping",
-        channels=[
-            channel_literal("s3://bucket/input.txt")
-        ],
-        processes=[
-            process_one("s3://bucket/input.txt"),
-            process_two("s3://bucket/test.txt")
-        ]
-    )
+    start = channel_literal("s3://bucket/input.txt")
+    
+    out1 = process_one(start)
+    out2 = process_two(out1)
+    
+    workflow(name = "channel_mapping", target = out2)

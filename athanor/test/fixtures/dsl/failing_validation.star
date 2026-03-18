@@ -1,5 +1,5 @@
 def bad_process(data):
-    process(
+    return process(
         image   = "test:latest",
         command = "process {input} {unknown_placeholder}",
         inputs  = {"input": data},
@@ -8,10 +8,6 @@ def bad_process(data):
     )
 
 def main():
-    workflow(
-        name = "bad_workflow",
-        channels=[],
-        processes=[
-            bad_process("s3://bucket/input.txt")
-        ]
-    )
+    data = channel_literal("s3://bucket/input.txt")
+    out = bad_process(data)
+    workflow(name = "bad_workflow", target = out)

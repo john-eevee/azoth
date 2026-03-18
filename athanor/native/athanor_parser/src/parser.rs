@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 
+use crate::channel_ref::ChannelRef;
 use anyhow::anyhow;
 use starlark::any::ProvidesStaticType;
 use starlark::environment::GlobalsBuilder;
@@ -16,6 +17,7 @@ use starlark::values::list::ListRef;
 use starlark::values::none::NoneType;
 use starlark::values::UnpackValue;
 use starlark::values::Value;
+use starlark::values::ValueLike;
 
 use crate::error::ValidationError;
 use crate::error::ValidationErrors;
@@ -76,7 +78,7 @@ fn starlark_process(builder: &mut GlobalsBuilder) {
     fn process<'v>(
         #[starlark(kwargs)] kwargs: DictRef<'v>,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<NoneType> {
+    ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
         let process_id = output.next_id();
 
@@ -84,9 +86,18 @@ fn starlark_process(builder: &mut GlobalsBuilder) {
         // fall back to the enclosing Starlark function name from the call stack.
         let name = resolve_process_name(&kwargs, eval)?;
 
-        let desc = extract_process(process_id, name, &kwargs)?;
+        let desc = extract_process(process_id.clone(), name, &kwargs)?;
         output.processes.borrow_mut().push(desc);
-        Ok(NoneType)
+
+        // A process creates an implicit Result channel representing its outputs
+        let channel_id = format!("chan_{}", process_id);
+        output.channels.borrow_mut().push(ChannelDef {
+            id: channel_id.clone(),
+            channel_type: ChannelType::Result,
+            source: ChannelSource::Result { process_id },
+        });
+
+        Ok(eval.heap().alloc(ChannelRef { id: channel_id }))
     }
 }
 
@@ -95,39 +106,39 @@ fn starlark_channel(builder: &mut GlobalsBuilder) {
     fn channel_from_path<'v>(
         glob: &str,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<NoneType> {
+    ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
         let id = output.next_id();
         output.channels.borrow_mut().push(ChannelDef {
-            id,
+            id: id.clone(),
             channel_type: ChannelType::Path,
             source: ChannelSource::FromPath {
                 glob: glob.to_owned(),
             },
         });
-        Ok(NoneType)
+        Ok(eval.heap().alloc(ChannelRef { id }))
     }
 
     fn channel_literal<'v>(
         value: &str,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<NoneType> {
+    ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
         let id = output.next_id();
         output.channels.borrow_mut().push(ChannelDef {
-            id,
+            id: id.clone(),
             channel_type: ChannelType::Literal,
             source: ChannelSource::Literal {
                 value: value.to_owned(),
             },
         });
-        Ok(NoneType)
+        Ok(eval.heap().alloc(ChannelRef { id }))
     }
 
     fn channel_join<'v>(
         _args: Value<'v>,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<NoneType> {
+    ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
         let id = output.next_id();
         output.channels.borrow_mut().push(ChannelDef {
@@ -137,7 +148,7 @@ fn starlark_channel(builder: &mut GlobalsBuilder) {
                 process_id: format!("join_{id}"),
             },
         });
-        Ok(NoneType)
+        Ok(eval.heap().alloc(ChannelRef { id }))
     }
 }
 
@@ -153,6 +164,11 @@ fn starlark_workflow(builder: &mut GlobalsBuilder) {
             .and_then(|v| v.unpack_str().map(str::to_owned))
             .ok_or_else(|| anyhow!("workflow() missing 'name'"))?;
         *output.workflow_name.borrow_mut() = Some(name);
+
+        if kwargs.get_str("channels").is_some() || kwargs.get_str("processes").is_some() {
+            return Err(anyhow!("workflow() should not take 'channels' or 'processes'. Pass channels between processes and use `target=` to specify the final output."));
+        }
+
         Ok(NoneType)
     }
 }
@@ -259,10 +275,14 @@ fn extract_inputs(
             .unpack_str()
             .ok_or_else(|| anyhow!("process '{proc_name}': input key must be a string"))?
             .to_owned();
-        // Input values are channel references at runtime; store their string
-        // representation if available, otherwise record empty string.
-        let value = v.unpack_str().unwrap_or("").to_owned();
-        map.insert(key, value);
+
+        if let Some(chan) = v.downcast_ref::<ChannelRef>() {
+            map.insert(key, chan.id.clone());
+        } else {
+            return Err(anyhow!(
+                "process '{proc_name}': input '{key}' must be a channel (use channel_literal or pass the output of a process)"
+            ));
+        }
     }
     Ok(map)
 }

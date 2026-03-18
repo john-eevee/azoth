@@ -15,6 +15,30 @@
         "glob": "s3://my-bucket/data/*.fastq.gz",
         "kind": "from_path"
       }
+    },
+    {
+      "channel_type": "result",
+      "id": "chan_id_2",
+      "source": {
+        "kind": "result",
+        "process_id": "id_2"
+      }
+    },
+    {
+      "channel_type": "result",
+      "id": "chan_id_3",
+      "source": {
+        "kind": "result",
+        "process_id": "id_3"
+      }
+    },
+    {
+      "channel_type": "result",
+      "id": "chan_id_4",
+      "source": {
+        "kind": "result",
+        "process_id": "id_4"
+      }
     }
   ],
   "name": "genomics_pipeline",
@@ -24,8 +48,8 @@
       "id": "id_2",
       "image": "genomics/bwa:0.7.17",
       "inputs": {
-        "reads": "s3://my-bucket/data/sample_R1.fq.gz",
-        "ref": "s3://my-bucket/refs/hg38.fa"
+        "reads": "id_1",
+        "ref": "id_0"
       },
       "name": "align",
       "outputs": {
@@ -45,8 +69,8 @@
       "id": "id_3",
       "image": "genomics/gatk:4.4",
       "inputs": {
-        "bam": "s3://my-bucket/aligned/sample_R1.bam",
-        "ref": "s3://my-bucket/refs/hg38.fa"
+        "bam": "chan_id_2",
+        "ref": "id_0"
       },
       "name": "call_variants",
       "outputs": {
@@ -66,7 +90,7 @@
       "id": "id_4",
       "image": "genomics/bcftools:1.18",
       "inputs": {
-        "vcfs": "s3://my-bucket/variants/sample_R1.vcf.gz"
+        "vcfs": "chan_id_3"
       },
       "name": "merge_vcfs",
       "outputs": {

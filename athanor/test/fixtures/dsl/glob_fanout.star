@@ -1,5 +1,5 @@
 def producer(data):
-    process(
+    return process(
         image = "producer:v1",
         command = "produce {input}",
         inputs = {"input": data},
@@ -8,7 +8,7 @@ def producer(data):
     )
 
 def consumer(data):
-    process(
+    return process(
         image = "consumer:v1",
         command = "consume {input}",
         inputs = {"input": data},
@@ -17,14 +17,9 @@ def consumer(data):
     )
 
 def main():
-    workflow(
-        name = "glob_fanout",
-        channels=[
-            channel_literal("s3://bucket/start.txt"),
-            channel_from_path("s3://bucket/out/*.txt")    
-        ],
-        processes=[
-            producer("s3://bucket/start.txt"),
-            consumer("s3://bucket/out/*.txt")
-        ]
-    )
+    start = channel_literal("s3://bucket/start.txt")
+    
+    out1 = producer(start)
+    out2 = consumer(out1)
+    
+    workflow(name = "glob_fanout", target = out2)

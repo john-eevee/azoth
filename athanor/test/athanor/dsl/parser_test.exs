@@ -72,7 +72,7 @@ defmodule Athanor.DSL.ParserTest do
     test "duplicate process name via function name returns error" do
       src = """
       def align(ref):
-          process(
+          return process(
               image     = "img:1",
               command   = "run",
               inputs    = {"ref": ref},
@@ -81,8 +81,10 @@ defmodule Athanor.DSL.ParserTest do
           )
 
       def main():
-          align("a")
-          align("b")
+          c1 = channel_literal("a")
+          c2 = channel_literal("b")
+          align(c1)
+          align(c2)
           workflow(name = "dup_test")
       """
 
@@ -94,7 +96,7 @@ defmodule Athanor.DSL.ParserTest do
     test "duplicate process name via explicit name= kwarg returns error" do
       src = """
       def step_a():
-          process(
+          return process(
               name      = "my_step",
               image     = "img:1",
               command   = "run",
@@ -104,7 +106,7 @@ defmodule Athanor.DSL.ParserTest do
           )
 
       def step_b():
-          process(
+          return process(
               name      = "my_step",
               image     = "img:2",
               command   = "run",

@@ -91,6 +91,7 @@ dependencies = [
 name = "athanor_parser"
 version = "0.1.0"
 dependencies = [
+ "allocative",
  "anyhow",
  "hex",
  "regex",

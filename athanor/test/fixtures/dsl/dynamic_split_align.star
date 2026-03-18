@@ -1,7 +1,7 @@
-# Dynamic Split-Align — glob outputs and runtime-discovered parallelism
+# Dynamic Split-Align — programmatic data flow design
 
 def split_genome(ref):
-    process(
+    return process(
         image   = "genomics/tools:latest",
         command = "split_tool {ref} --output-dir ./chunks/",
         inputs  = {"ref": ref},
@@ -10,7 +10,7 @@ def split_genome(ref):
     )
 
 def align_chunk(chunk, reads):
-    process(
+    return process(
         image   = "genomics/bwa:0.7.17",
         command = "bwa mem -t {cpu} {chunk} {reads} -o {output}",
         inputs  = {"chunk": chunk, "reads": reads},
@@ -19,14 +19,10 @@ def align_chunk(chunk, reads):
     )
 
 def main():
-    workflow(
-        name = "dynamic_split_align",
-        channels=[
-            channel_literal("s3://my-bucket/refs/hg38.fa"),
-            channel_literal("s3://my-bucket/data/sample_R1.fq.gz")
-        ],
-        processes=[
-            split_genome("s3://my-bucket/refs/hg38.fa"),
-            align_chunk("s3://my-bucket/refs/chr1.fa", "s3://my-bucket/data/sample_R1.fq.gz")
-        ]
-    )
+    ref = channel_literal("s3://my-bucket/refs/hg38.fa")
+    reads = channel_literal("s3://my-bucket/data/sample_R1.fq.gz")
+
+    chunks = split_genome(ref)
+    bams = align_chunk(chunks, reads)
+
+    workflow(name = "dynamic_split_align", target = bams)

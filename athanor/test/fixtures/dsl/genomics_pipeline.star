@@ -1,8 +1,7 @@
-# Genomics Pipeline — static output paths
-# Three processes: align, call_variants, merge_vcfs
+# Genomics Pipeline — programmatic data flow design
 
 def align(ref, reads):
-    process(
+    return process(
         image   = "genomics/bwa:0.7.17",
         command = "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
         inputs  = {
@@ -20,7 +19,7 @@ def align(ref, reads):
     )
 
 def call_variants(bam, ref):
-    process(
+    return process(
         image   = "genomics/gatk:4.4",
         command = "gatk HaplotypeCaller -R {ref} -I {bam} -O {vcf}",
         inputs  = {
@@ -38,7 +37,7 @@ def call_variants(bam, ref):
     )
 
 def merge_vcfs(vcfs):
-    process(
+    return process(
         image   = "genomics/bcftools:1.18",
         command = "bcftools merge {vcfs} -o {merged}",
         inputs  = {
@@ -55,15 +54,14 @@ def merge_vcfs(vcfs):
     )
 
 def main():
-    workflow(
-        name = "genomics_pipeline",
-        channels=[
-            channel_literal("s3://my-bucket/refs/hg38.fa"),
-            channel_from_path("s3://my-bucket/data/*.fastq.gz")
-        ],
-        processes=[
-            align("s3://my-bucket/refs/hg38.fa", "s3://my-bucket/data/sample_R1.fq.gz"),
-            call_variants("s3://my-bucket/aligned/sample_R1.bam", "s3://my-bucket/refs/hg38.fa"),
-            merge_vcfs("s3://my-bucket/variants/sample_R1.vcf.gz")
-        ]
-    )
+    # 1. Define channels as variables
+    ref = channel_literal("s3://my-bucket/refs/hg38.fa")
+    samples = channel_from_path("s3://my-bucket/data/*.fastq.gz")
+
+    # 2. Composition via function calls creates the graph
+    bams = align(ref, samples)
+    vcfs = call_variants(bams, ref)
+    merged = merge_vcfs(vcfs)
+
+    # 3. Final declaration (captures the generated graph)
+    workflow(name = "genomics_pipeline", target = merged)

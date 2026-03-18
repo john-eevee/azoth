@@ -41,7 +41,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -62,7 +62,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -81,7 +81,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -100,7 +100,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -123,7 +123,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -144,7 +144,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -163,7 +163,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -182,7 +182,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -201,7 +201,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -220,7 +220,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -243,7 +243,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -263,7 +263,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -283,7 +283,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -303,7 +303,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -326,7 +326,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -354,7 +354,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -373,7 +373,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -396,7 +396,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 
@@ -418,7 +418,7 @@ defmodule Athanor.DSL.ValidatorTest do
         )
 
     def main():
-        test_proc("s3://bucket/input.txt")
+        test_proc(channel_literal("s3://bucket/input.txt"))
         workflow(name = "test")
     """
 

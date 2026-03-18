@@ -1,6 +1,7 @@
 mod error;
 mod ir;
 mod parser;
+mod channel_ref;
 mod serializer;
 mod validator;
 
