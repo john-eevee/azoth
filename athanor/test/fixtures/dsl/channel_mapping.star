@@ -17,7 +17,13 @@ def process_two(in2_val):
     )
 
 def main():
-    channel_literal("s3://bucket/input.txt")
-    process_one("s3://bucket/input.txt")
-    process_two("s3://bucket/test.txt")
-    workflow(name = "channel_mapping")
+    workflow(
+        name = "channel_mapping",
+        channels=[
+            channel_literal("s3://bucket/input.txt")
+        ],
+        processes=[
+            process_one("s3://bucket/input.txt"),
+            process_two("s3://bucket/test.txt")
+        ]
+    )

@@ -1,7 +1,7 @@
 def producer(data):
     process(
         image = "producer:v1",
-        command = "produce {input} --out-dir s3://bucket/out/",
+        command = "produce {input}",
         inputs = {"input": data},
         outputs = ["s3://bucket/out/*.txt"],
         resources = {"cpu": 1, "mem": 1.0, "disk": 1.0}
@@ -10,7 +10,7 @@ def producer(data):
 def consumer(data):
     process(
         image = "consumer:v1",
-        command = "consume {input} -o {out}",
+        command = "consume {input}",
         inputs = {"input": data},
         outputs = {"out": "s3://bucket/final/{input.stem}.out"},
         resources = {"cpu": 1, "mem": 1.0, "disk": 1.0}
@@ -18,10 +18,10 @@ def consumer(data):
 
 def main():
     workflow(
-        name = "reactive_glob_dag",
+        name = "glob_fanout",
         channels=[
             channel_literal("s3://bucket/start.txt"),
-            channel_from_path("s3://bucket/out/*.txt")
+            channel_from_path("s3://bucket/out/*.txt")    
         ],
         processes=[
             producer("s3://bucket/start.txt"),

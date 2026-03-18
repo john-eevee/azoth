@@ -22,9 +22,9 @@ Python-inspired language that ensures execution plans are stable and reproducibl
 
 | Type | Description | DSL constructor |
 |---|---|---|
-| `path` | Glob over a local or remote path; emits one item per matching file | `channel.from_path(glob)` |
+| `path` | Glob over a local or remote path; emits one item per matching file | `channel_from_path(glob)` |
 | `result` | Output channel produced by a process; emits items as the process writes outputs | implicit, returned by process functions |
-| `literal` | A single statically-known value; useful for injecting fixed references | `channel.literal(value)` |
+| `literal` | A single statically-known value; useful for injecting fixed references | `channel_literal(value)` |
 
 ---
 
@@ -120,40 +120,22 @@ Key points:
 > item on the channel independently. This is what enables safe fan-out: multiple
 > downstream processes can subscribe to the same channel without starving each other.
 
-### `channel.from_path(glob)`
+### `channel_from_path(glob)`
 
 Emits one `ArtifactRef` per path matching the glob. The channel type is `:path`.
 Supports local paths and object-store URIs.
 
 ```python
-samples = channel.from_path("s3://my-bucket/data/*.fastq.gz")
+channel_from_path("s3://my-bucket/data/*.fastq.gz")
 ```
 
-### `channel.literal(value)`
+### `channel_literal(value)`
 
 Wraps a single static value as a one-item channel. The channel type is `:literal`.
 Useful for injecting a shared reference artifact into a fan-out.
 
 ```python
-reference = channel.literal("s3://my-bucket/refs/hg38.fa")
-```
-
-### `channel.map(fn)`
-
-Calls `fn` once per item in the channel. Returns a new result channel whose items
-are the outputs declared by `fn`. The channel type of the result is `:result`.
-
-```python
-aligned = samples.map(lambda reads: align(reference, reads))
-```
-
-### `channel.join(*channels)`
-
-Waits for all named channels to emit at least one item, then triggers once with
-the full set. Used for fan-in (merge) semantics.
-
-```python
-merged = channel.join(bam_a, bam_b)
+channel_literal("s3://my-bucket/refs/hg38.fa")
 ```
 
 ---
@@ -225,25 +207,17 @@ def merge_vcfs(vcfs):
 # ── workflow entry point ──────────────────────────────────────────────────────
 
 def main():
-    # Static reference — emits a single ArtifactRef into the pipeline
-    ref = channel.literal("s3://my-bucket/refs/hg38.fa")
-
-    # Path channel — one item per FASTQ file; fan-out triggers align() per sample
-    samples = channel.from_path("s3://my-bucket/data/*.fastq.gz")
-
-    # Fan-out: align is called once per (ref x sample) combination
-    bams = samples.map(lambda reads: align(ref, reads))
-
-    # Fan-out: variant calling runs reactively as each BAM is written
-    vcfs = bams.map(lambda bam: call_variants(bam, ref))
-
-    # Fan-in: merge waits until all VCFs are ready, then runs once
-    cohort = channel.join(vcfs).map(merge_vcfs)
-
-    return workflow(
-        name      = "genomics_pipeline",
-        processes = [align, call_variants, merge_vcfs],
-        channels  = [ref, samples, bams, vcfs, cohort],
+    workflow(
+        name = "genomics_pipeline",
+        channels=[
+            channel_literal("s3://my-bucket/refs/hg38.fa"),
+            channel_from_path("s3://my-bucket/data/*.fastq.gz")
+        ],
+        processes=[
+            align("s3://my-bucket/refs/hg38.fa", "s3://my-bucket/data/sample_R1.fq.gz"),
+            call_variants("s3://my-bucket/aligned/sample_R1.bam", "s3://my-bucket/refs/hg38.fa"),
+            merge_vcfs("s3://my-bucket/variants/sample_R1.vcf.gz")
+        ]
     )
 ```
 
@@ -290,21 +264,16 @@ def align_chunk(chunk, reads):
     )
 
 def main():
-    ref   = channel.literal("s3://my-bucket/refs/hg38.fa")
-    reads = channel.literal("s3://my-bucket/data/sample_R1.fq.gz")
-
-    # split_genome runs once; Quicksilver publishes N ArtifactRefs at runtime.
-    # Athanor appends each to the `chunks` channel and fans out automatically.
-    chunks = ref.map(split_genome)
-
-    # align_chunk is called once per chunk × reads combination.
-    # The actual parallelism (e.g. 24 chromosomes) is discovered at runtime.
-    bams = chunks.map(lambda chunk: align_chunk(chunk, reads))
-
-    return workflow(
-        name      = "dynamic_split_align",
-        processes = [split_genome, align_chunk],
-        channels  = [ref, reads, chunks, bams],
+    workflow(
+        name = "dynamic_split_align",
+        channels=[
+            channel_literal("s3://my-bucket/refs/hg38.fa"),
+            channel_literal("s3://my-bucket/data/sample_R1.fq.gz")
+        ],
+        processes=[
+            split_genome("s3://my-bucket/refs/hg38.fa"),
+            align_chunk("s3://my-bucket/refs/chr1.fa", "s3://my-bucket/data/sample_R1.fq.gz")
+        ]
     )
 ```
 

@@ -19,10 +19,14 @@ def align_chunk(chunk, reads):
     )
 
 def main():
-    channel_literal("s3://my-bucket/refs/hg38.fa")
-    channel_literal("s3://my-bucket/data/sample_R1.fq.gz")
-
-    split_genome("s3://my-bucket/refs/hg38.fa")
-    align_chunk("s3://my-bucket/refs/chr1.fa", "s3://my-bucket/data/sample_R1.fq.gz")
-
-    workflow(name = "dynamic_split_align")
+    workflow(
+        name = "dynamic_split_align",
+        channels=[
+            channel_literal("s3://my-bucket/refs/hg38.fa"),
+            channel_literal("s3://my-bucket/data/sample_R1.fq.gz")
+        ],
+        processes=[
+            split_genome("s3://my-bucket/refs/hg38.fa"),
+            align_chunk("s3://my-bucket/refs/chr1.fa", "s3://my-bucket/data/sample_R1.fq.gz")
+        ]
+    )

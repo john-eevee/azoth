@@ -55,11 +55,15 @@ def merge_vcfs(vcfs):
     )
 
 def main():
-    channel_literal("s3://my-bucket/refs/hg38.fa")
-    channel_from_path("s3://my-bucket/data/*.fastq.gz")
-
-    align("s3://my-bucket/refs/hg38.fa", "s3://my-bucket/data/sample_R1.fq.gz")
-    call_variants("s3://my-bucket/aligned/sample_R1.bam", "s3://my-bucket/refs/hg38.fa")
-    merge_vcfs("s3://my-bucket/variants/sample_R1.vcf.gz")
-
-    workflow(name = "genomics_pipeline")
+    workflow(
+        name = "genomics_pipeline",
+        channels=[
+            channel_literal("s3://my-bucket/refs/hg38.fa"),
+            channel_from_path("s3://my-bucket/data/*.fastq.gz")
+        ],
+        processes=[
+            align("s3://my-bucket/refs/hg38.fa", "s3://my-bucket/data/sample_R1.fq.gz"),
+            call_variants("s3://my-bucket/aligned/sample_R1.bam", "s3://my-bucket/refs/hg38.fa"),
+            merge_vcfs("s3://my-bucket/variants/sample_R1.vcf.gz")
+        ]
+    )

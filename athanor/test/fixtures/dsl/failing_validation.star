@@ -8,5 +8,10 @@ def bad_process(data):
     )
 
 def main():
-    bad_process("s3://bucket/input.txt")
-    workflow(name = "bad_workflow")
+    workflow(
+        name = "bad_workflow",
+        channels=[],
+        processes=[
+            bad_process("s3://bucket/input.txt")
+        ]
+    )

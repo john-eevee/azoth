@@ -27,8 +27,6 @@ use crate::ir::ProcessDescriptor;
 use crate::ir::ResourceDef;
 use crate::ir::WorkflowPlan;
 
-// ── Name validation ───────────────────────────────────────────────────────────
-
 const MAX_NAME_LEN: usize = 120;
 
 /// Returns `Ok(())` if `name` matches `[a-zA-Z0-9_.]{1,120}`, else an error.
@@ -54,8 +52,6 @@ fn validate_name(name: &str, context: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-// ── Captured output ───────────────────────────────────────────────────────────
-
 /// Shared mutable state injected via `eval.extra` to capture what the DSL emits.
 #[derive(Debug, Default, ProvidesStaticType)]
 struct ParseOutput {
@@ -74,8 +70,6 @@ impl ParseOutput {
         id
     }
 }
-
-// ── DSL builtins ─────────────────────────────────────────────────────────────
 
 #[starlark_module]
 fn starlark_process(builder: &mut GlobalsBuilder) {
@@ -162,8 +156,6 @@ fn starlark_workflow(builder: &mut GlobalsBuilder) {
         Ok(NoneType)
     }
 }
-
-// ── Extraction helpers ────────────────────────────────────────────────────────
 
 fn extra<'v, 'a>(eval: &'a Evaluator<'v, '_, '_>) -> anyhow::Result<&'a ParseOutput> {
     eval.extra
@@ -348,8 +340,6 @@ fn num_from_value(val: Value<'_>) -> Option<f64> {
     // Slow path: float via StarlarkFloat (implements public UnpackValue).
     StarlarkFloat::unpack_value(val).ok().flatten().map(|f| f.0)
 }
-
-// ── Public parse entry point ──────────────────────────────────────────────────
 
 /// Parse Starlark DSL source and return a [`WorkflowPlan`].
 pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
