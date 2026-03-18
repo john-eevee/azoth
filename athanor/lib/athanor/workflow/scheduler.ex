@@ -148,18 +148,28 @@ defmodule Athanor.Workflow.Scheduler do
   def handle_cast({:subscribe, channel_id, process_id}, state) do
     # Cursor starts at current buffer length — only future arrivals trigger tasks.
     # Callers that want to reprocess existing items should call publish/3 explicitly.
-    current_count =
-      case Map.get(state.channels, channel_id) do
-        nil -> 0
-        ch -> ch.buf.count
-      end
 
-    subscription = %{cursor: current_count, process_id: process_id}
+    already_subscribed? =
+      state.subscriptions
+      |> Map.get(channel_id, [])
+      |> Enum.any?(fn sub -> sub.process_id == process_id end)
 
-    subscriptions =
-      Map.update(state.subscriptions, channel_id, [subscription], &[subscription | &1])
+    if already_subscribed? do
+      {:noreply, state}
+    else
+      current_count =
+        case Map.get(state.channels, channel_id) do
+          nil -> 0
+          ch -> ch.buf.count
+        end
 
-    {:noreply, %{state | subscriptions: subscriptions}}
+      subscription = %{cursor: current_count, process_id: process_id}
+
+      subscriptions =
+        Map.update(state.subscriptions, channel_id, [subscription], &[subscription | &1])
+
+      {:noreply, %{state | subscriptions: subscriptions}}
+    end
   end
 
   def handle_cast({:publish, channel_id, artifacts}, state) do

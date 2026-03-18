@@ -49,6 +49,21 @@ defmodule Athanor.Workflow.SchedulerTest do
 
       Scheduler.subscribe(sched, ch, pid)
     end
+
+    test "subscribing multiple times is idempotent" do
+      {_wid, sched} = start_instance()
+      ch = unique_id()
+      pid = unique_id()
+
+      Scheduler.subscribe(sched, ch, pid)
+      Scheduler.subscribe(sched, ch, pid)
+
+      :sys.get_state(sched)
+      state = :sys.get_state(sched)
+
+      # Should only have one subscription object for this channel
+      assert length(state.subscriptions[ch]) == 1
+    end
   end
 
   describe "fan_out on publish" do
