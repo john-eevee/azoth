@@ -138,7 +138,14 @@ change.
 **Exit Criteria**: Parse `dsl.md` examples into stable IR; runner executes
 Starlark-defined workflows end-to-end with deterministic snapshots
 
-**Status**: ⏳ PENDING (next phase after Phase 1 completion)
+**Status**: ✅ COMPLETE
+
+**Implementation Details**:
+- **AZ-201 (Starlark Parser):** Integrated `rustler` with the `starlark` Rust crate. Added parsing for `process`, `channel_literal`, `channel_from_path` and `workflow` declarations. Replaced declarative lists with programmatic data-flow graph generation (processes return `ChannelRef`).
+- **AZ-202 (Canonical IR Serializer):** Configured deterministic JSON generation over the Rust IR via `serde_json`, allowing stable hashing. Extended `ProcessDescriptor` so `image` supports a struct containing `tag` and `checksum`.
+- **AZ-203 (DSL Linting & Validation):** Validates resources (`cpu`, `mem`, `disk` > 0), URI schemes (s3, gs, nfs, local), process duplicate names, and strict template placeholder enforcement.
+- **AZ-204 (Golden Tests):** `genomics_pipeline` and `dynamic_split_align` have JSON snapshot tests and end-to-end Elixir integration tests validating runtime workflow registration.
+- **Glob Resolution:** Built `Athanor.Storage.GlobResolver` and `LocalGlobResolver` to expand input `channel.from_path(...)` patterns before workflow execution begins.
 
 **Dependencies**: Phase 1 (AZ-101–105) must be complete and passing all tests before beginning Phase 2.
 
