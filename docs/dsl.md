@@ -31,7 +31,21 @@ Python-inspired language that ensures execution plans are stable and reproducibl
 ## Process Definition
 
 A process function takes one or more channel arguments and returns a `process()`
-descriptor. The function is called once per item combination emitted by the
+descriptor. 
+
+**Crucial Distinction:** The function arguments (e.g., `ref`, `reads`) are **not** 
+the actual data buffers. They are placeholders representing the `ArtifactRef` 
+items that will be emitted by the upstream channels at runtime. 
+
+When you call `align(ref, reads)` in the DSL:
+1.  Starlark executes the function once to construct a **Process Descriptor** (the IR).
+2.  The `ref` and `reads` objects passed into the function contain metadata about 
+    their parent channels.
+3.  The `process()` constructor uses this metadata to "wire" the subscription graph.
+4.  The function **does not** execute the command. It merely returns a 
+    representation of *how* the command should be executed later by a worker.
+
+The function is called once per item combination emitted by the
 upstream channels (fan-out). Resources are declared as separate named fields
 matching the control-plane model.
 
