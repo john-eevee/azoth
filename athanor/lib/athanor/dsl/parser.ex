@@ -41,4 +41,24 @@ defmodule Athanor.DSL.Parser do
       Native.fingerprint_json(json)
     end
   end
+
+  @doc """
+  Parse `source` (Starlark DSL text) and return both the decoded `WorkflowPlan`
+  map and its SHA-256 fingerprint on success, or an `{:error, reason}` tuple on failure.
+  """
+  @spec parse_and_fingerprint(String.t()) ::
+          {:ok, %{plan: map(), fingerprint: String.t()}} | {:error, String.t()}
+  def parse_and_fingerprint(source) when is_binary(source) do
+    with {:ok, json} <- Native.parse_workflow(source),
+         {:ok, plan} <- Jason.decode(json, keys: :atoms),
+         {:ok, hash} <- Native.fingerprint_json(json) do
+      {:ok, %{plan: plan, fingerprint: hash}}
+    else
+      {:error, reason} when is_binary(reason) ->
+        {:error, reason}
+
+      {:error, %Jason.DecodeError{} = e} ->
+        {:error, "JSON decode failed: #{Exception.message(e)}"}
+    end
+  end
 end
