@@ -170,6 +170,48 @@ defmodule Athanor.Workflow.SchedulerTest do
       [downstream_task] = Map.values(state.running_tasks)
       assert downstream_task.process_id == downstream_p
     end
+
+    test "completing a task with multiple glob output artifacts dispatches multiple downstream tasks" do
+      {_wid, sched} = start_instance()
+
+      input_ch = unique_id()
+      upstream_p = unique_id()
+      downstream_p = unique_id()
+
+      # Upstream process represents the one outputting a glob
+      Scheduler.register_process(sched, upstream_p, process("img", "step1", ["s3://out/*.txt"]))
+      Scheduler.register_process(sched, downstream_p, process("img", "step2"))
+
+      Scheduler.subscribe(sched, input_ch, upstream_p)
+
+      # Downstream subscribes to upstream's output channel
+      Scheduler.subscribe(sched, upstream_p, downstream_p)
+
+      Scheduler.publish(sched, input_ch, [artifact("s3://start.txt")])
+      :sys.get_state(sched)
+
+      state = :sys.get_state(sched)
+      [fingerprint] = Map.keys(state.running_tasks)
+
+      # Emulate the worker agent returning multiple items matching the glob
+      Scheduler.complete_task(sched, fingerprint, [
+        artifact("s3://out/file1.txt"),
+        artifact("s3://out/file2.txt"),
+        artifact("s3://out/file3.txt")
+      ])
+
+      :sys.get_state(sched)
+
+      state = :sys.get_state(sched)
+
+      # 3 items produced -> 3 downstream tasks should be running
+      assert map_size(state.running_tasks) == 3
+
+      # Ensure all running tasks belong to the downstream process
+      Enum.each(state.running_tasks, fn {_fp, task} ->
+        assert task.process_id == downstream_p
+      end)
+    end
   end
 
   describe "fail_task/2" do
