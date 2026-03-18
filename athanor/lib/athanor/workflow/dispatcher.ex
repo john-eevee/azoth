@@ -63,7 +63,7 @@ defmodule Athanor.Workflow.Dispatcher do
   end
 
   defp impl() do
-    Application.get_env(:athanor, :dispatcher_impl, Athanor.Workflow.StubDispatcher)
+    Application.get_env(:athanor, :dispatcher_impl, String)
   end
 
   defmodule StubDispatcher do

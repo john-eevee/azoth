@@ -2,7 +2,6 @@ defmodule Athanor.Workflow.DispatcherTest do
   use ExUnit.Case, async: true
 
   alias Athanor.Workflow.Dispatcher
-  alias Athanor.Workflow.StubDispatcher
 
   defp unique_id, do: Uniq.UUID.uuid7()
 
@@ -18,6 +17,12 @@ defmodule Athanor.Workflow.DispatcherTest do
       output_search_patterns: ["./output/*.bam"],
       resources: %{cpu: 8.0, mem: 16_384, disk: 51_200}
     }
+  end
+
+  setup do
+    # Use the stub dispatcher for all tests in this module
+    Application.put_env(:athanor, :dispatcher_impl, Athanor.Workflow.Dispatcher.StubDispatcher)
+    :ok
   end
 
   describe "build_voucher/3" do
@@ -62,7 +67,7 @@ defmodule Athanor.Workflow.DispatcherTest do
 
       voucher = Dispatcher.build_voucher(wid, task, process())
 
-      assert {:ok, ^fingerprint} = StubDispatcher.dispatch(voucher)
+      assert {:ok, ^fingerprint} = Dispatcher.dispatch(voucher)
     end
   end
 end

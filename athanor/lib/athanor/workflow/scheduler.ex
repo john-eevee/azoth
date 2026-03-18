@@ -10,7 +10,7 @@ defmodule Athanor.Workflow.Scheduler do
     so the same (process + inputs) combination is never dispatched twice.
   - Enforces a `max_concurrency` gate: at most N tasks run simultaneously.
   - Delegates actual dispatch to a pluggable `Dispatcher` module (default:
-    `StubDispatcher` for Phase 1).
+    `StubDispatcher`).
 
   ## Naming
 
@@ -32,16 +32,8 @@ defmodule Athanor.Workflow.Scheduler do
 
   @type t :: GenServer.server()
 
-  # ---------------------------------------------------------------------------
-  # Naming helpers
-  # ---------------------------------------------------------------------------
-
   @spec server_name(Workflow.id()) :: {:global, String.t()}
   def server_name(workflow_id), do: {:global, "Athanor.Workflow.Scheduler.#{workflow_id}"}
-
-  # ---------------------------------------------------------------------------
-  # State types
-  # ---------------------------------------------------------------------------
 
   @typep state :: %{
            workflow_id: Workflow.id(),
@@ -51,8 +43,7 @@ defmodule Athanor.Workflow.Scheduler do
            running_tasks: %{Workflow.fingerprint() => Workflow.task()},
            cas_index: MapSet.t(Workflow.fingerprint()),
            max_concurrency: pos_integer(),
-           queue: :queue.t(),
-           dispatcher: module()
+           queue: :queue.t()
          }
 
   @typep message ::
@@ -133,7 +124,6 @@ defmodule Athanor.Workflow.Scheduler do
   def init(opts) do
     workflow_id = Keyword.fetch!(opts, :workflow_id)
     max_concurrency = Keyword.get(opts, :max_concurrency, 4)
-    dispatcher = Keyword.get(opts, :dispatcher, Athanor.Workflow.StubDispatcher)
 
     state = %{
       workflow_id: workflow_id,
@@ -143,8 +133,7 @@ defmodule Athanor.Workflow.Scheduler do
       running_tasks: %{},
       cas_index: MapSet.new(),
       max_concurrency: max_concurrency,
-      queue: :queue.new(),
-      dispatcher: dispatcher
+      queue: :queue.new()
     }
 
     {:ok, state}
@@ -317,7 +306,7 @@ defmodule Athanor.Workflow.Scheduler do
       process = Map.fetch!(state.processes, task.process_id)
       voucher = Dispatcher.build_voucher(state.workflow_id, task, process)
 
-      case state.dispatcher.dispatch(voucher) do
+      case Dispatcher.dispatch(voucher) do
         {:ok, _ref} ->
           running_task = %{task | status: :running}
 
