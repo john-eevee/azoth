@@ -19,4 +19,15 @@ defmodule Athanor.Storage.GlobResolver do
 
   """
   @callback resolve_glob(uri_pattern :: String.t()) :: {:ok, [String.t()]} | {:error, term()}
+
+  @doc """
+  Expands a glob URI using the configured backend.
+  """
+  def resolve_glob(uri_pattern) do
+    impl().resolve_glob(uri_pattern)
+  end
+
+  defp impl do
+    Application.get_env(:athanor, :glob_resolver, Athanor.Storage.LocalGlobResolver)
+  end
 end

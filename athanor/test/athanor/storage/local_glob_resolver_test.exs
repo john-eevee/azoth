@@ -1,6 +1,7 @@
 defmodule Athanor.Storage.LocalGlobResolverTest do
   use ExUnit.Case, async: true
 
+  alias Athanor.Storage.GlobResolver
   alias Athanor.Storage.LocalGlobResolver
 
   setup do
@@ -15,6 +16,8 @@ defmodule Athanor.Storage.LocalGlobResolverTest do
     on_exit(fn ->
       File.rm_rf!(temp_dir)
     end)
+
+    Application.put_env(:athanor, :glob_resolver, LocalGlobResolver)
 
     %{temp_dir: temp_dir}
   end
@@ -31,7 +34,7 @@ defmodule Athanor.Storage.LocalGlobResolverTest do
 
   test "resolves file:// scheme correctly", %{temp_dir: temp_dir} do
     pattern = "file://" <> Path.join(temp_dir, "*.txt")
-    {:ok, files} = LocalGlobResolver.resolve_glob(pattern)
+    {:ok, files} = GlobResolver.resolve_glob(pattern)
 
     assert length(files) == 2
     assert Enum.any?(files, &String.starts_with?(&1, "file://"))
@@ -40,11 +43,11 @@ defmodule Athanor.Storage.LocalGlobResolverTest do
 
   test "returns error for unsupported schemes" do
     assert {:error, {:unsupported_scheme, "s3://bucket/*.txt"}} =
-             LocalGlobResolver.resolve_glob("s3://bucket/*.txt")
+             GlobResolver.resolve_glob("s3://bucket/*.txt")
   end
 
   test "returns empty list when no files match", %{temp_dir: temp_dir} do
     pattern = Path.join(temp_dir, "*.md")
-    assert {:ok, []} = LocalGlobResolver.resolve_glob(pattern)
+    assert {:ok, []} = GlobResolver.resolve_glob(pattern)
   end
 end
