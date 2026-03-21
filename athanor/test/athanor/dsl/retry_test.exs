@@ -19,7 +19,7 @@ defmodule Athanor.DSL.RetryTest do
     {:ok, plan} = Parser.parse(src)
     proc = Enum.find(plan.processes, & &1.name == "retry_step")
     assert proc.retry == %{
-      backoff: :exponential,
+      backoff: "exponential",
       count: 5,
       exponent: 2.5,
       initial_delay: 1000
@@ -62,7 +62,7 @@ defmodule Athanor.DSL.RetryTest do
     {:ok, plan} = Parser.parse(src)
     proc = Enum.find(plan.processes, & &1.name == "retry_step")
     assert proc.retry == %{
-      backoff: :linear,
+      backoff: "linear",
       count: 4,
       delays: [1000, 2000, 2000, 2000]
     }

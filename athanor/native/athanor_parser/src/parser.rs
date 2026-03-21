@@ -28,6 +28,7 @@ use crate::ir::ImageDef;
 use crate::ir::OutputDef;
 use crate::ir::ProcessDescriptor;
 use crate::ir::ResourceDef;
+use crate::ir::RetryDef;
 use crate::ir::WorkflowPlan;
 
 const MAX_NAME_LEN: usize = 120;
