@@ -25,7 +25,8 @@ defmodule Athanor.MixProject do
       {:ex_doc, "~> 0.40", only: :dev, runtime: false, warn_if_outdated: true},
       {:uniq, "~> 0.6"},
       {:rustler, "~> 0.36", runtime: false},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 end
