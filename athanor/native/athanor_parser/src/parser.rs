@@ -240,6 +240,7 @@ fn extract_process(
     let inputs = extract_inputs(kwargs, &name)?;
     let outputs = extract_outputs(kwargs, &name)?;
     let resources = extract_resources(kwargs, &name)?;
+    let retry = extract_retry(kwargs, &name)?;
 
     Ok(ProcessDescriptor {
         id,
@@ -249,7 +250,95 @@ fn extract_process(
         inputs,
         outputs,
         resources,
+        retry,
     })
+}
+
+fn extract_retry(kwargs: &DictRef<'_>, proc_name: &str) -> anyhow::Result<Option<RetryDef>> {
+    let val = match kwargs.get_str("retry") {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    let dict = DictRef::from_value(val)
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'retry' must be a dict"))?;
+
+    let backoff = dict
+        .get_str("backoff")
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'retry' dict missing 'backoff'"))?
+        .unpack_str()
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'retry.backoff' must be a string"))?;
+
+    let count = dict
+        .get_str("count")
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'retry' dict missing 'count'"))?
+        .unpack_i32()
+        .ok_or_else(|| anyhow!("process '{proc_name}': 'retry.count' must be an integer"))?
+        as u32;
+
+    match backoff {
+        "exponential" => {
+            let exponent = dict
+                .get_str("exponent")
+                .ok_or_else(|| {
+                    anyhow!("process '{proc_name}': 'retry' exponential backoff missing 'exponent'")
+                })?;
+            let exponent = num_from_value(exponent).ok_or_else(|| {
+                anyhow!("process '{proc_name}': 'retry.exponent' must be a number")
+            })?;
+
+            let initial_delay = dict
+                .get_str("initial_delay")
+                .map(num_from_value)
+                .flatten()
+                .map(|f| f as u32)
+                .unwrap_or(500);
+
+            Ok(Some(RetryDef::Exponential {
+                count,
+                exponent,
+                initial_delay,
+            }))
+        }
+        "linear" => {
+            let delays_val = dict.get_str("delays").ok_or_else(|| {
+                anyhow!("process '{proc_name}': 'retry' linear backoff missing 'delays'")
+            })?;
+
+            let list = ListRef::from_value(delays_val).ok_or_else(|| {
+                anyhow!("process '{proc_name}': 'retry.delays' must be a list")
+            })?;
+
+            let mut delays: Vec<u32> = list
+                .iter()
+                .map(|v| {
+                    v.unpack_i32()
+                        .map(|i| i as u32)
+                        .ok_or_else(|| anyhow!("process '{proc_name}': 'retry.delays' item must be an integer"))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            if delays.is_empty() {
+                return Err(anyhow!(
+                    "process '{proc_name}': 'retry.delays' must not be empty"
+                ));
+            }
+
+            // Pad or truncate delays to match count
+            if delays.len() < count as usize {
+                let last = *delays.last().unwrap();
+                delays.resize(count as usize, last);
+            } else if delays.len() > count as usize {
+                delays.truncate(count as usize);
+            }
+
+            Ok(Some(RetryDef::Linear { count, delays }))
+        }
+        _ => Err(anyhow!(
+            "process '{proc_name}': invalid retry backoff '{}' (expected 'exponential' or 'linear')",
+            backoff
+        )),
+    }
 }
 
 fn extract_image(kwargs: &DictRef<'_>, proc_name: &str) -> anyhow::Result<ImageDef> {

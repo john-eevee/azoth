@@ -31,6 +31,22 @@ pub struct ProcessDescriptor {
     pub inputs: BTreeMap<String, String>,
     pub outputs: OutputDef,
     pub resources: ResourceDef,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<RetryDef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "backoff")]
+pub enum RetryDef {
+    Exponential {
+        count: u32,
+        exponent: f64,
+        initial_delay: u32,
+    },
+    Linear {
+        count: u32,
+        delays: Vec<u32>,
+    },
 }
 
 /// How a process declares its output artifacts.

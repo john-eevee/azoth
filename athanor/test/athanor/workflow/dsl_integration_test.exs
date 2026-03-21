@@ -330,7 +330,8 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
         cpu: dsl_proc.resources.cpu,
         mem: dsl_proc.resources.mem,
         disk: dsl_proc.resources.disk
-      }
+      },
+      retry: dsl_proc[:retry]
     }
   end
 end

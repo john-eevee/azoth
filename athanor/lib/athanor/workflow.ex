@@ -80,6 +80,10 @@ defmodule Athanor.Workflow do
 
   @type channel_subscriptions() :: {channel_id(), [subscription()]}
 
+  @type retry_policy() ::
+          %{backoff: :exponential, count: non_neg_integer(), exponent: float(), initial_delay: non_neg_integer()}
+          | %{backoff: :linear, count: non_neg_integer(), delays: [non_neg_integer()]}
+
   @type process() :: %{
           name: String.t(),
           image: String.t(),
@@ -90,7 +94,8 @@ defmodule Athanor.Workflow do
             mem: non_neg_integer() | :inf,
             cpu: float() | :inf,
             disk: non_neg_integer() | :inf
-          }
+          },
+          retry: retry_policy() | nil
         }
 
   @type task_status() :: :pending | :running | :completed | :failed

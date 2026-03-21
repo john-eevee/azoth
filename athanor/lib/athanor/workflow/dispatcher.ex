@@ -24,7 +24,8 @@ defmodule Athanor.Workflow.Dispatcher do
             cpu: float() | :inf,
             mem: non_neg_integer() | :inf,
             disk: non_neg_integer() | :inf
-          }
+          },
+          retry: Workflow.retry_policy() | nil
         }
 
   @doc """
@@ -54,7 +55,8 @@ defmodule Athanor.Workflow.Dispatcher do
       command: process.command,
       inputs: inputs,
       output_search_patterns: process.output_search_patterns,
-      resources: process.resources
+      resources: process.resources,
+      retry: process[:retry]
     }
   end
 
@@ -89,7 +91,8 @@ defmodule Athanor.Workflow.Dispatcher do
         command: voucher.command,
         input_count: length(voucher.inputs),
         output_patterns: voucher.output_search_patterns,
-        resources: inspect(voucher.resources)
+        resources: inspect(voucher.resources),
+        retry: inspect(voucher.retry)
       )
 
       {:ok, voucher.fingerprint}
