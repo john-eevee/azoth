@@ -127,6 +127,36 @@ defmodule Athanor.Workflow.SchedulerTest do
       assert map_size(state.running_tasks) == 2
       assert :queue.len(state.queue) == 1
     end
+
+    test "dispatches new tasks reactively as more items become available in the channel" do
+      {_wid, sched} = start_instance()
+
+      ch = unique_id()
+      p_id = unique_id()
+
+      Scheduler.register_process(sched, p_id, process())
+      Scheduler.subscribe(sched, ch, p_id)
+
+      # First batch
+      Scheduler.publish(sched, ch, [artifact("s3://1"), artifact("s3://2")])
+      state = :sys.get_state(sched)
+      assert map_size(state.running_tasks) == 2
+
+      # Second batch - simulating more items arriving in the channel
+      Scheduler.publish(sched, ch, [artifact("s3://3"), artifact("s3://4")])
+      state = :sys.get_state(sched)
+      assert map_size(state.running_tasks) == 4
+
+      # Verify we have the expected artifacts in running tasks
+      running_artifacts =
+        state.running_tasks
+        |> Map.values()
+        |> Enum.flat_map(& &1.input_artifacts)
+        |> Enum.map(&to_string(&1.uri))
+        |> Enum.sort()
+
+      assert running_artifacts == ["s3://1", "s3://2", "s3://3", "s3://4"]
+    end
   end
 
   describe "complete_task/3" do
