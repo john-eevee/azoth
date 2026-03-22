@@ -81,7 +81,12 @@ defmodule Athanor.Workflow do
   @type channel_subscriptions() :: {channel_id(), [subscription()]}
 
   @type retry_policy() ::
-          %{backoff: :exponential, count: non_neg_integer(), exponent: float(), initial_delay: non_neg_integer()}
+          %{
+            backoff: :exponential,
+            count: non_neg_integer(),
+            exponent: float(),
+            initial_delay: non_neg_integer()
+          }
           | %{backoff: :linear, count: non_neg_integer(), delays: [non_neg_integer()]}
 
   @type process() :: %{
