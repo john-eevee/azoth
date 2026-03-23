@@ -41,18 +41,18 @@ defmodule Athanor.Workflow.Scheduler do
            channels: %{Workflow.channel_id() => Workflow.channel()},
            processes: %{Workflow.process_id() => Workflow.process()},
            subscriptions: %{Workflow.channel_id() => [Workflow.subscription()]},
-            running_tasks: %{Workflow.fingerprint() => Workflow.task()},
-            cas_index: MapSet.t(Workflow.fingerprint()),
-            queue: :queue.t()
-          }
+           running_tasks: %{Workflow.fingerprint() => Workflow.task()},
+           cas_index: MapSet.t(Workflow.fingerprint()),
+           queue: :queue.t()
+         }
 
   @typep message ::
            {:register_process, Workflow.process_id(), Workflow.process()}
            | {:subscribe, Workflow.channel_id(), Workflow.process_id()}
            | {:publish, Workflow.channel_id(), [Workflow.artifact()]}
-            | {:complete_task, Workflow.fingerprint(), [Workflow.artifact()]}
-            | {:fail_task, Workflow.fingerprint()}
-            | {:dispatch_next, pos_integer()}
+           | {:complete_task, Workflow.fingerprint(), [Workflow.artifact()]}
+           | {:fail_task, Workflow.fingerprint()}
+           | {:dispatch_next, pos_integer()}
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
@@ -120,6 +120,14 @@ defmodule Athanor.Workflow.Scheduler do
     GenServer.cast(scheduler, {:fail_task, fingerprint})
   end
 
+  @doc """
+  Manually trigger dispatch with a specific demand.
+  """
+  @spec dispatch_next(t(), pos_integer()) :: :ok
+  def dispatch_next(scheduler, demand \\ 1) do
+    GenServer.cast(scheduler, {:dispatch_next, demand})
+  end
+
   @impl true
   def init(opts) do
     workflow_id = Keyword.fetch!(opts, :workflow_id)
@@ -174,7 +182,7 @@ defmodule Athanor.Workflow.Scheduler do
     state
     |> do_append(channel_id, artifacts)
     |> fan_out(channel_id)
-    |> dispatch_next(1)
+    |> do_dispatch_next(1)
     |> then(&{:noreply, &1})
   end
 
@@ -200,7 +208,7 @@ defmodule Athanor.Workflow.Scheduler do
             state
           end
 
-        state |> dispatch_next(1) |> then(&{:noreply, &1})
+        state |> do_dispatch_next(1) |> then(&{:noreply, &1})
     end
   end
 
@@ -214,12 +222,12 @@ defmodule Athanor.Workflow.Scheduler do
         Logger.warning("[Scheduler] task failed", fingerprint: fingerprint)
         state = %{state | running_tasks: running_tasks}
         TaskMonitor.unregister(state.workflow_id, fingerprint)
-        state |> dispatch_next(1) |> then(&{:noreply, &1})
+        state |> do_dispatch_next(1) |> then(&{:noreply, &1})
     end
   end
 
   def handle_cast({:dispatch_next, demand}, state) do
-    {:noreply, dispatch_next(state, demand)}
+    {:noreply, do_dispatch_next(state, demand)}
   end
 
   @spec do_append(state(), Workflow.channel_id(), [Workflow.artifact()]) :: state()
@@ -301,8 +309,7 @@ defmodule Athanor.Workflow.Scheduler do
   end
 
   # Drain the queue up to `demand`, dispatching one task per slot.
-  @spec dispatch_next(state(), pos_integer()) :: state()
-  defp dispatch_next(state, demand \\ 1) do
+  defp do_dispatch_next(state, demand) do
     if demand <= 0 or :queue.is_empty(state.queue) do
       state
     else
@@ -322,7 +329,7 @@ defmodule Athanor.Workflow.Scheduler do
           }
 
           # Continue draining — recurse until demand met or empty
-          dispatch_next(state, demand - 1)
+          do_dispatch_next(state, demand - 1)
 
         {:error, reason} ->
           Logger.error("[Scheduler] dispatch failed for #{task.fingerprint}: #{inspect(reason)}")
@@ -336,7 +343,7 @@ defmodule Athanor.Workflow.Scheduler do
           }
 
           # Try next in queue for this demand slot
-          dispatch_next(state, demand)
+          do_dispatch_next(state, demand)
       end
     end
   end
