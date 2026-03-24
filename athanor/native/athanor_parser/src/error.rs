@@ -6,13 +6,6 @@ use thiserror::Error;
 /// human-readable diagnostic without additional lookups.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum ValidationError {
-    /// A required field is absent on the given process.
-    #[error("process '{process_id}': missing required field '{field}'")]
-    MissingField {
-        process_id: String,
-        field: &'static str,
-    },
-
     /// A field that must be a non-empty string is empty.
     #[error("process '{process_id}': field '{field}' must be a non-empty string")]
     EmptyField {
@@ -42,16 +35,6 @@ pub enum ValidationError {
         scheme: String,
     },
 
-    /// A resource value is not a number.
-    #[error(
-        "process '{process_id}': resource '{resource}' must be a number, \
-         got a string or other non-numeric value"
-    )]
-    NonNumericResource {
-        process_id: String,
-        resource: &'static str,
-    },
-
     /// A resource value is zero or negative.
     #[error("process '{process_id}': resource '{resource}' must be > 0, got {value}")]
     NonPositiveResource {
@@ -68,20 +51,12 @@ pub enum ValidationError {
     #[error("no workflow() call found — main() must return workflow(...)")]
     NoWorkflowFound,
 
-    /// The `workflow()` call is missing a required keyword.
-    #[error("workflow() is missing required keyword '{keyword}'")]
-    WorkflowMissingKeyword { keyword: &'static str },
-
     /// Two processes in the same workflow share the same name.
     #[error(
         "workflow '{workflow_name}': duplicate process name '{name}' \
          (process names must be unique within a workflow)"
     )]
     DuplicateProcessName { workflow_name: String, name: String },
-
-    /// An internal extraction invariant was violated.
-    #[error("internal extraction error: {message}")]
-    ExtractionError { message: String },
 }
 
 /// Convenience alias.

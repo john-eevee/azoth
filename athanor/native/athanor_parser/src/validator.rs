@@ -32,7 +32,7 @@ pub fn validate_workflow(plan: &WorkflowPlan) -> Result<(), ValidationErrors> {
 }
 
 /// Validate a single process descriptor.
-fn validate_process(process: &ProcessDescriptor) -> ValidationErrors {
+pub fn validate_process(process: &ProcessDescriptor) -> ValidationErrors {
     let mut errors = Vec::new();
 
     // Check required fields
@@ -217,117 +217,4 @@ fn validate_channel(channel: &ChannelDef) -> ValidationErrors {
     }
 
     errors
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ir::ResourceDef;
-
-    fn make_test_process(id: &str, name: &str) -> ProcessDescriptor {
-        ProcessDescriptor {
-            id: id.to_string(),
-            name: name.to_string(),
-            image: "test:latest".to_string(),
-            command: "echo test".to_string(),
-            inputs: Default::default(),
-            outputs: OutputDef::Static(Default::default()),
-            resources: ResourceDef {
-                cpu: 1.0,
-                mem: 2.0,
-                disk: 10.0,
-            },
-        }
-    }
-
-    #[test]
-    fn test_validate_process_missing_image() {
-        let mut proc = make_test_process("id_0", "test");
-        proc.image.clear();
-
-        let errs = validate_process(&proc);
-        assert_eq!(errs.len(), 1);
-        match &errs[0] {
-            ValidationError::EmptyField { field, .. } => assert_eq!(*field, "image"),
-            _ => panic!("Expected EmptyField error"),
-        }
-    }
-
-    #[test]
-    fn test_validate_command_placeholder_resolution() {
-        let mut proc = make_test_process("id_0", "test");
-        proc.command = "process {input1} {unknown}".to_string();
-        proc.inputs
-            .insert("input1".to_string(), "s3://bucket/file".to_string());
-
-        let errs = validate_process(&proc);
-        assert_eq!(errs.len(), 1);
-        match &errs[0] {
-            ValidationError::UnresolvablePlaceholder { placeholder, .. } => {
-                assert_eq!(placeholder, "unknown")
-            }
-            _ => panic!("Expected UnresolvablePlaceholder error"),
-        }
-    }
-
-    #[test]
-    fn test_validate_placeholder_cpu_mem_disk() {
-        let mut proc = make_test_process("id_0", "test");
-        proc.command = "process -c {cpu} -m {mem} -d {disk}".to_string();
-
-        let errs = validate_command_placeholders(&proc);
-        assert!(errs.is_empty(), "Resource placeholders should be valid");
-    }
-
-    #[test]
-    fn test_validate_output_uri_s3() {
-        let mut proc = make_test_process("id_0", "test");
-        let mut outputs = std::collections::BTreeMap::new();
-        outputs.insert(
-            "result".to_string(),
-            "s3://bucket/path/file.txt".to_string(),
-        );
-        proc.outputs = OutputDef::Static(outputs);
-
-        let errs = validate_output_uris(&proc);
-        assert!(errs.is_empty(), "Valid s3 URI should pass");
-    }
-
-    #[test]
-    fn test_validate_output_uri_invalid_scheme() {
-        let mut proc = make_test_process("id_0", "test");
-        let mut outputs = std::collections::BTreeMap::new();
-        outputs.insert("result".to_string(), "http://bucket/file.txt".to_string());
-        proc.outputs = OutputDef::Static(outputs);
-
-        let errs = validate_output_uris(&proc);
-        assert_eq!(errs.len(), 1);
-        match &errs[0] {
-            ValidationError::InvalidOutputScheme { scheme, .. } => assert_eq!(scheme, "http"),
-            _ => panic!("Expected InvalidOutputScheme error"),
-        }
-    }
-
-    #[test]
-    fn test_validate_resources_negative() {
-        let mut proc = make_test_process("id_0", "test");
-        proc.resources.cpu = -1.0;
-
-        let errs = validate_resources(&proc);
-        assert_eq!(errs.len(), 1);
-        match &errs[0] {
-            ValidationError::NonPositiveResource { resource, .. } => assert_eq!(*resource, "cpu"),
-            _ => panic!("Expected NonPositiveResource error"),
-        }
-    }
-
-    #[test]
-    fn test_extract_placeholders() {
-        let text = "command {input1} {ref.stem} more {output} stuff";
-        let placeholders = extract_placeholders(text);
-        assert_eq!(placeholders.len(), 3);
-        assert!(placeholders.contains(&"input1".to_string()));
-        assert!(placeholders.contains(&"ref.stem".to_string()));
-        assert!(placeholders.contains(&"output".to_string()));
-    }
 }
