@@ -8,9 +8,10 @@ defmodule Athanor.Workflow.Scheduler do
     artifact independently (fan-out).
   - Deduplicates tasks via a content-addressable fingerprint index (CAS index)
     so the same (process + inputs) combination is never dispatched twice.
-  - Enforces a `max_concurrency` gate: at most N tasks run simultaneously.
   - Delegates actual dispatch to a pluggable `Dispatcher` module (default:
     `StubDispatcher`).
+  - Pull-based dispatch: the scheduler waits for demand before sending tasks to
+    the dispatcher.
 
   ## Naming
 
@@ -42,7 +43,6 @@ defmodule Athanor.Workflow.Scheduler do
            subscriptions: %{Workflow.channel_id() => [Workflow.subscription()]},
            running_tasks: %{Workflow.fingerprint() => Workflow.task()},
            cas_index: MapSet.t(Workflow.fingerprint()),
-           max_concurrency: pos_integer(),
            queue: :queue.t()
          }
 
@@ -52,7 +52,7 @@ defmodule Athanor.Workflow.Scheduler do
            | {:publish, Workflow.channel_id(), [Workflow.artifact()]}
            | {:complete_task, Workflow.fingerprint(), [Workflow.artifact()]}
            | {:fail_task, Workflow.fingerprint()}
-           | :dispatch_next
+           | {:dispatch_next, pos_integer()}
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
@@ -120,10 +120,17 @@ defmodule Athanor.Workflow.Scheduler do
     GenServer.cast(scheduler, {:fail_task, fingerprint})
   end
 
+  @doc """
+  Manually trigger dispatch with a specific demand.
+  """
+  @spec dispatch_next(t(), pos_integer()) :: :ok
+  def dispatch_next(scheduler, demand \\ 1) do
+    GenServer.cast(scheduler, {:dispatch_next, demand})
+  end
+
   @impl true
   def init(opts) do
     workflow_id = Keyword.fetch!(opts, :workflow_id)
-    max_concurrency = Keyword.get(opts, :max_concurrency, 4)
 
     state = %{
       workflow_id: workflow_id,
@@ -132,7 +139,6 @@ defmodule Athanor.Workflow.Scheduler do
       subscriptions: %{},
       running_tasks: %{},
       cas_index: MapSet.new(),
-      max_concurrency: max_concurrency,
       queue: :queue.new()
     }
 
@@ -176,7 +182,7 @@ defmodule Athanor.Workflow.Scheduler do
     state
     |> do_append(channel_id, artifacts)
     |> fan_out(channel_id)
-    |> dispatch_next()
+    |> do_dispatch_next(1)
     |> then(&{:noreply, &1})
   end
 
@@ -202,7 +208,7 @@ defmodule Athanor.Workflow.Scheduler do
             state
           end
 
-        state |> dispatch_next() |> then(&{:noreply, &1})
+        state |> do_dispatch_next(1) |> then(&{:noreply, &1})
     end
   end
 
@@ -216,12 +222,12 @@ defmodule Athanor.Workflow.Scheduler do
         Logger.warning("[Scheduler] task failed", fingerprint: fingerprint)
         state = %{state | running_tasks: running_tasks}
         TaskMonitor.unregister(state.workflow_id, fingerprint)
-        state |> dispatch_next() |> then(&{:noreply, &1})
+        state |> do_dispatch_next(1) |> then(&{:noreply, &1})
     end
   end
 
-  def handle_cast(:dispatch_next, state) do
-    {:noreply, dispatch_next(state)}
+  def handle_cast({:dispatch_next, demand}, state) do
+    {:noreply, do_dispatch_next(state, demand)}
   end
 
   @spec do_append(state(), Workflow.channel_id(), [Workflow.artifact()]) :: state()
@@ -302,12 +308,9 @@ defmodule Athanor.Workflow.Scheduler do
     end
   end
 
-  # Drain the queue up to `max_concurrency`, dispatching one task per slot.
-  @spec dispatch_next(state()) :: state()
-  defp dispatch_next(state) do
-    available = state.max_concurrency - map_size(state.running_tasks)
-
-    if available <= 0 or :queue.is_empty(state.queue) do
+  # Drain the queue up to `demand`, dispatching one task per slot.
+  defp do_dispatch_next(state, demand) do
+    if demand <= 0 or :queue.is_empty(state.queue) do
       state
     else
       {{:value, task}, queue} = :queue.out(state.queue)
@@ -325,19 +328,22 @@ defmodule Athanor.Workflow.Scheduler do
             | running_tasks: Map.put(state.running_tasks, task.fingerprint, running_task)
           }
 
-          # Continue draining — recurse until full or empty
-          dispatch_next(state)
+          # Continue draining — recurse until demand met or empty
+          do_dispatch_next(state, demand - 1)
 
         {:error, reason} ->
           Logger.error("[Scheduler] dispatch failed for #{task.fingerprint}: #{inspect(reason)}")
 
           # Re-enqueue at the back so it can be retried; remove from CAS so it
           # can be re-fingerprinted if inputs change. Phase 5 adds backoff.
-          %{
+          state = %{
             state
             | queue: :queue.snoc(state.queue, task),
               cas_index: MapSet.delete(state.cas_index, task.fingerprint)
           }
+
+          # Try next in queue for this demand slot
+          do_dispatch_next(state, demand)
       end
     end
   end

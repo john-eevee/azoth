@@ -41,7 +41,7 @@ defmodule Athanor.Workflow.SchedulerTest do
 
   setup do
     Application.put_env(:athanor, :dispatcher_impl, Athanor.Workflow.DispatcherMock)
-    
+
     # Allow the Scheduler process (GenServer) to use expectations set in the test process
     set_mox_from_context(nil)
     Mox.stub_with(Athanor.Workflow.DispatcherMock, Athanor.Workflow.Dispatcher.StubDispatcher)
@@ -78,7 +78,10 @@ defmodule Athanor.Workflow.SchedulerTest do
 
   describe "fan_out on publish" do
     test "publishes to a subscribed process and dispatches tasks" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 3, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 3, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
 
       ch = unique_id()
@@ -89,6 +92,7 @@ defmodule Athanor.Workflow.SchedulerTest do
       Scheduler.subscribe(sched, ch, p_id)
 
       Scheduler.publish(sched, ch, [artifact("s3://1"), artifact("s3://2"), artifact("s3://3")])
+      Scheduler.dispatch_next(sched, 2)
 
       :sys.get_state(sched)
 
@@ -98,7 +102,10 @@ defmodule Athanor.Workflow.SchedulerTest do
     end
 
     test "does not enqueue duplicate fingerprints (CAS dedup)" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 1, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 1, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
 
       ch = unique_id()
@@ -119,8 +126,11 @@ defmodule Athanor.Workflow.SchedulerTest do
     end
 
     test "respects max_concurrency: excess tasks wait in queue" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher -> {:ok, voucher.fingerprint} end)
-      {_wid, sched} = start_instance(max_concurrency: 2)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
+      {_wid, sched} = start_instance()
 
       ch = unique_id()
       p_id = unique_id()
@@ -134,6 +144,8 @@ defmodule Athanor.Workflow.SchedulerTest do
         artifact("s3://3")
       ])
 
+      Scheduler.dispatch_next(sched, 1)
+
       :sys.get_state(sched)
       state = :sys.get_state(sched)
 
@@ -143,8 +155,10 @@ defmodule Athanor.Workflow.SchedulerTest do
 
     test "dispatches new tasks reactively as more items become available in the channel" do
       # Expect exactly 4 calls
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 4, fn voucher -> {:ok, voucher.fingerprint} end)
-      
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 4, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
 
       ch = unique_id()
@@ -155,13 +169,15 @@ defmodule Athanor.Workflow.SchedulerTest do
 
       # First batch
       Scheduler.publish(sched, ch, [artifact("s3://1"), artifact("s3://2")])
-      
+      Scheduler.dispatch_next(sched, 1)
+
       # Assertions inside :sys.get_state to ensure sync
       state = :sys.get_state(sched)
       assert map_size(state.running_tasks) == 2
 
       # Second batch - simulating more items arriving in the channel
       Scheduler.publish(sched, ch, [artifact("s3://3"), artifact("s3://4")])
+      Scheduler.dispatch_next(sched, 1)
       state = :sys.get_state(sched)
       assert map_size(state.running_tasks) == 4
 
@@ -179,7 +195,10 @@ defmodule Athanor.Workflow.SchedulerTest do
 
   describe "complete_task/3" do
     test "removes task from running and drains the queue" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance(max_concurrency: 1)
 
       ch = unique_id()
@@ -206,7 +225,10 @@ defmodule Athanor.Workflow.SchedulerTest do
     end
 
     test "publishes output artifacts to an output channel triggering downstream fan-out" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
 
       input_ch = unique_id()
@@ -237,7 +259,10 @@ defmodule Athanor.Workflow.SchedulerTest do
     end
 
     test "completing a task with multiple glob output artifacts dispatches multiple downstream tasks" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 4, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 4, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
 
       input_ch = unique_id()
@@ -266,6 +291,8 @@ defmodule Athanor.Workflow.SchedulerTest do
         artifact("s3://out/file3.txt")
       ])
 
+      Scheduler.dispatch_next(sched, 2)
+
       :sys.get_state(sched)
 
       state = :sys.get_state(sched)
@@ -282,7 +309,10 @@ defmodule Athanor.Workflow.SchedulerTest do
 
   describe "fail_task/2" do
     test "removes task from running and drains the queue" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance(max_concurrency: 1)
 
       ch = unique_id()
@@ -308,7 +338,10 @@ defmodule Athanor.Workflow.SchedulerTest do
 
   describe "multiple subscribers to the same channel" do
     test "each subscriber receives every artifact independently" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
 
       ch = unique_id()
@@ -322,6 +355,8 @@ defmodule Athanor.Workflow.SchedulerTest do
       Scheduler.subscribe(sched, ch, p2)
 
       Scheduler.publish(sched, ch, [artifact("s3://shared.fa")])
+      Scheduler.dispatch_next(sched, 1)
+
       :sys.get_state(sched)
 
       state = :sys.get_state(sched)
@@ -337,7 +372,10 @@ defmodule Athanor.Workflow.SchedulerTest do
     import ExUnit.CaptureLog
 
     test "publish/3 accepts a single artifact instead of a list" do
-      expect(Athanor.Workflow.DispatcherMock, :dispatch, 1, fn voucher -> {:ok, voucher.fingerprint} end)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 1, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
       {_wid, sched} = start_instance()
       ch = unique_id()
       p = unique_id()
@@ -391,9 +429,10 @@ defmodule Athanor.Workflow.SchedulerTest do
       assert log =~ "fan_out skipping unknown process_id"
     end
 
-    test "handle_cast(:dispatch_next) when queue is empty does nothing" do
+    test "handle_cast({:dispatch_next, demand}) when queue is empty does nothing" do
       {_wid, sched} = start_instance()
-      GenServer.cast(sched, :dispatch_next)
+      demand = 1
+      GenServer.cast(sched, {:dispatch_next, demand})
 
       state = :sys.get_state(sched)
       assert :queue.is_empty(state.queue)

@@ -4,6 +4,7 @@ mod ir;
 mod parser;
 mod serializer;
 mod validator;
+mod tests;
 
 use rustler::Atom;
 use rustler::NifResult;

@@ -47,7 +47,14 @@ defmodule Athanor.Workflow.DispatcherTest do
       assert voucher.command == "bwa mem -t 8 {ref} {reads}"
       assert voucher.output_search_patterns == ["./output/*.bam"]
       assert voucher.resources.cpu == 8.0
-      assert voucher.retry == %{backoff: :exponential, count: 3, exponent: 2.0, initial_delay: 500}
+
+      assert voucher.retry == %{
+               backoff: :exponential,
+               count: 3,
+               exponent: 2.0,
+               initial_delay: 500
+             }
+
       assert length(voucher.inputs) == 1
       [input] = voucher.inputs
       assert input.uri == "s3://bucket/reads.fq.gz"

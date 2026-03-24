@@ -16,14 +16,16 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     {:ok, plan} = Parser.parse(src)
-    proc = Enum.find(plan.processes, & &1.name == "retry_step")
+    proc = Enum.find(plan.processes, &(&1.name == "retry_step"))
+
     assert proc.retry == %{
-      backoff: "exponential",
-      count: 5,
-      exponent: 2.5,
-      initial_delay: 1000
-    }
+             backoff: "exponential",
+             count: 5,
+             exponent: 2.5,
+             initial_delay: 1000
+           }
   end
 
   test "parses exponential retry with default initial_delay" do
@@ -40,8 +42,9 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     {:ok, plan} = Parser.parse(src)
-    proc = Enum.find(plan.processes, & &1.name == "retry_step")
+    proc = Enum.find(plan.processes, &(&1.name == "retry_step"))
     assert proc.retry.initial_delay == 500
   end
 
@@ -59,13 +62,15 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     {:ok, plan} = Parser.parse(src)
-    proc = Enum.find(plan.processes, & &1.name == "retry_step")
+    proc = Enum.find(plan.processes, &(&1.name == "retry_step"))
+
     assert proc.retry == %{
-      backoff: "linear",
-      count: 4,
-      delays: [1000, 2000, 2000, 2000]
-    }
+             backoff: "linear",
+             count: 4,
+             delays: [1000, 2000, 2000, 2000]
+           }
   end
 
   test "parses linear retry with truncation" do
@@ -82,8 +87,9 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     {:ok, plan} = Parser.parse(src)
-    proc = Enum.find(plan.processes, & &1.name == "retry_step")
+    proc = Enum.find(plan.processes, &(&1.name == "retry_step"))
     assert proc.retry.delays == [1000, 2000]
   end
 
@@ -101,6 +107,7 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     assert {:error, reason} = Parser.parse(src)
     assert reason =~ "invalid retry backoff 'invalid'"
   end
@@ -119,6 +126,7 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     assert {:error, reason} = Parser.parse(src)
     assert reason =~ "'retry' must be a dict"
   end
@@ -137,6 +145,7 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     assert {:error, reason} = Parser.parse(src)
     assert reason =~ "'retry' dict missing 'backoff'"
   end
@@ -155,6 +164,7 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     assert {:error, reason} = Parser.parse(src)
     assert reason =~ "'retry' linear backoff missing 'delays'"
   end
@@ -173,6 +183,7 @@ defmodule Athanor.DSL.RetryTest do
         )
         workflow(name = "retry_test")
     """
+
     assert {:error, reason} = Parser.parse(src)
     assert reason =~ "'retry.delays' must not be empty"
   end

@@ -20,7 +20,6 @@ use starlark::values::Value;
 use starlark::values::ValueLike;
 
 use crate::error::ValidationError;
-use crate::error::ValidationErrors;
 use crate::ir::ChannelDef;
 use crate::ir::ChannelSource;
 use crate::ir::ChannelType;
