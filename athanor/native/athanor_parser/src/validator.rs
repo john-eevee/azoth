@@ -120,8 +120,8 @@ fn validate_output_uris(process: &ProcessDescriptor) -> ValidationErrors {
 
     match &process.outputs {
         OutputDef::Static(outputs) => {
-            for (key, uri) in outputs {
-                if let Err(e) = validate_uri_scheme(uri, &process.id, key) {
+            for (key, file_def) in outputs {
+                if let Err(e) = validate_uri_scheme(&file_def.uri, &process.id, key) {
                     errors.push(e);
                 }
             }
@@ -197,12 +197,31 @@ fn validate_resources(process: &ProcessDescriptor) -> ValidationErrors {
 
 /// Validate that channels referenced by processes exist.
 fn validate_references(plan: &WorkflowPlan) -> ValidationErrors {
-    let _valid_channels: HashSet<String> = plan.channels.iter().map(|c| c.id.clone()).collect();
+    let mut errors = Vec::new();
+    let valid_channels: std::collections::HashMap<String, String> = plan
+        .channels
+        .iter()
+        .map(|c| (c.id.clone(), c.format.clone()))
+        .collect();
 
-    // All references to channels in this plan should exist
-    // (For now, we just collect process/channel IDs; future: validate wiring)
+    for process in &plan.processes {
+        for (_input_name, input_def) in &process.inputs {
+            if let Some(channel_format) = valid_channels.get(&input_def.channel_id) {
+                if input_def.format != "generic"
+                    && channel_format != "generic"
+                    && channel_format != &input_def.format
+                {
+                    errors.push(ValidationError::TypeMismatch {
+                        process_id: process.id.clone(),
+                        expected: input_def.format.clone(),
+                        got: channel_format.clone(),
+                    });
+                }
+            }
+        }
+    }
 
-    Vec::new()
+    errors
 }
 
 /// Validate a single channel definition.

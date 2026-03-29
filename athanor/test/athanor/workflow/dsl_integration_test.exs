@@ -134,10 +134,11 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       for process <- plan.processes do
         proc = Registry.get_process(wid, process.id)
 
-        for {_input_name, channel_id} <- proc.input do
+        for {_input_name, input_def} <- proc.input do
           # This process should be listed as a subscriber to this channel
-          assert process.id in subscriptions[channel_id] or subscriptions[channel_id] == nil,
-                 "Process #{process.id} not subscribed to channel #{channel_id}"
+          assert process.id in subscriptions[input_def.channel_id] or
+                   subscriptions[input_def.channel_id] == nil,
+                 "Process #{process.id} not subscribed to channel #{input_def.channel_id}"
         end
       end
     end
@@ -238,9 +239,9 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       assert proc2 != nil
 
       dsl_proc1 = Enum.find(plan.processes, &(&1.name == "process_one"))
-      assert dsl_proc1.outputs.value[:out_val] == "s3://bucket/test.txt"
+      assert dsl_proc1.outputs.value[:out_val].uri == "s3://bucket/test.txt"
 
-      assert String.starts_with?(proc2.input[:in2_val], "chan_")
+      assert String.starts_with?(proc2.input[:in2_val].channel_id, "chan_")
 
       subscriptions = Registry.get_subscriptions(wid)
 
@@ -249,7 +250,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
           if p.name == "process_two", do: p.id, else: nil
         end)
 
-      proc2_id_in_subscriptions = subscriptions[proc2.input[:in2_val]] || []
+      proc2_id_in_subscriptions = subscriptions[proc2.input[:in2_val].channel_id] || []
       assert proc2_internal_id in proc2_id_in_subscriptions
     end
   end
@@ -281,7 +282,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
 
       # Validate consumer reads from the producer channel directly
       consumer = Registry.get_process_by_name(wid, "consumer")
-      assert String.starts_with?(consumer.input[:input], "chan_")
+      assert String.starts_with?(consumer.input[:input].channel_id, "chan_")
 
       # Validate no channel from_path was generated (it was removed in the refactor)
       glob_channel = Enum.find(plan.channels, &(&1.channel_type == "path"))
@@ -296,7 +297,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
         end)
 
       # The consumer should be subscribed to the producer's output channel
-      assert consumer_id in (subscriptions[consumer.input[:input]] || [])
+      assert consumer_id in (subscriptions[consumer.input[:input].channel_id] || [])
     end
   end
 

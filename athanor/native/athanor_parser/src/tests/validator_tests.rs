@@ -1,6 +1,6 @@
-use crate::ir::{ImageDef, OutputDef, ProcessDescriptor, ResourceDef};
-use crate::validator::validate_process;
 use crate::error::ValidationError;
+use crate::ir::{ImageDef, OutputDef, OutputFileDef, ProcessDescriptor, ResourceDef};
+use crate::validator::validate_process;
 use std::collections::BTreeMap;
 
 pub fn make_test_process(id: &str, name: &str) -> ProcessDescriptor {
@@ -42,7 +42,13 @@ fn test_validate_process_missing_command() {
     proc.command.clear();
 
     let errs = validate_process(&proc);
-    assert!(errs.iter().any(|e| matches!(e, ValidationError::EmptyField { field: "command", .. })));
+    assert!(errs.iter().any(|e| matches!(
+        e,
+        ValidationError::EmptyField {
+            field: "command",
+            ..
+        }
+    )));
 }
 
 #[test]
@@ -51,17 +57,43 @@ fn test_validate_process_missing_name() {
     proc.name.clear();
 
     let errs = validate_process(&proc);
-    assert!(errs.iter().any(|e| matches!(e, ValidationError::EmptyField { field: "name", .. })));
+    assert!(errs
+        .iter()
+        .any(|e| matches!(e, ValidationError::EmptyField { field: "name", .. })));
 }
 
 #[test]
 fn test_validate_output_uri_schemes() {
     let mut proc = make_test_process("id_0", "test");
     let mut outputs = BTreeMap::new();
-    outputs.insert("valid_s3".to_string(), "s3://bucket/key".to_string());
-    outputs.insert("valid_gs".to_string(), "gs://bucket/key".to_string());
-    outputs.insert("valid_nfs".to_string(), "nfs://path/to/file".to_string());
-    outputs.insert("invalid_http".to_string(), "http://example.com".to_string());
+    outputs.insert(
+        "valid_s3".to_string(),
+        OutputFileDef {
+            uri: "s3://bucket/key".to_string(),
+            format: "generic".to_string(),
+        },
+    );
+    outputs.insert(
+        "valid_gs".to_string(),
+        OutputFileDef {
+            uri: "gs://bucket/key".to_string(),
+            format: "generic".to_string(),
+        },
+    );
+    outputs.insert(
+        "valid_nfs".to_string(),
+        OutputFileDef {
+            uri: "nfs://path/to/file".to_string(),
+            format: "generic".to_string(),
+        },
+    );
+    outputs.insert(
+        "invalid_http".to_string(),
+        OutputFileDef {
+            uri: "http://example.com".to_string(),
+            format: "generic".to_string(),
+        },
+    );
     proc.outputs = OutputDef::Static(outputs);
 
     let errs = validate_process(&proc);

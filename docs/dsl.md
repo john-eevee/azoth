@@ -17,6 +17,10 @@ Python-inspired language that ensures execution plans are stable and reproducibl
   cache correctness; the data itself never passes through the control-plane.
 - **Workflow**: The top-level container that declares the processes and channels
   that form an execution graph.
+- **Typed Channels**: Channels can optionally be given a type (e.g. `format="bam"`).
+  When binding inputs via `Input(channel, format="bam")` and defining outputs via 
+  `Output("...", format="bam")`, Athanor structurally validates at parse-time 
+  that expected formats match the connected channels.
 
 ### Channel Types
 
@@ -59,11 +63,11 @@ def align(ref, reads):
         image   = "genomics/bwa:0.7.17",
         command = "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
         inputs  = {
-            "ref":   ref,
-            "reads": reads,
+            "ref":   Input(ref, format="fasta"),
+            "reads": Input(reads, format="fastq"),
         },
         outputs = {
-            "output": "s3://my-bucket/aligned/{reads.stem}.bam",
+            "output": Output("s3://my-bucket/aligned/{reads.stem}.bam", format="bam"),
         },
         resources = {
             "cpu":  8,
