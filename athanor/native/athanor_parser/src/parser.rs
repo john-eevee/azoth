@@ -17,6 +17,7 @@ use starlark::values::dict::DictRef;
 use starlark::values::float::StarlarkFloat;
 use starlark::values::list::ListRef;
 use starlark::values::none::NoneType;
+use starlark::values::tuple::UnpackTuple;
 use starlark::values::UnpackValue;
 use starlark::values::Value;
 use starlark::values::ValueLike;
@@ -205,6 +206,38 @@ fn starlark_channel(builder: &mut GlobalsBuilder) {
         Ok(eval.heap().alloc(ChannelRef {
             id,
             format: format.to_owned(),
+        }))
+    }
+
+    fn channel_zip<'v>(
+        #[starlark(args)] channels: UnpackTuple<Value<'v>>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> anyhow::Result<Value<'v>> {
+        if channels.items.is_empty() {
+            return Err(anyhow!("channel_zip requires at least one channel"));
+        }
+
+        let mut upstreams = Vec::new();
+        for channel_val in channels.items {
+            let chan = channel_val
+                .downcast_ref::<ChannelRef>()
+                .ok_or_else(|| anyhow!("channel_zip arguments must be channels"))?;
+            upstreams.push(chan.id.clone());
+        }
+
+        let output = extra(eval)?;
+        let id = output.next_id();
+
+        output.channels.borrow_mut().push(ChannelDef {
+            id: id.clone(),
+            channel_type: ChannelType::Zip,
+            source: ChannelSource::Zip { upstreams },
+            format: "generic".to_owned(),
+        });
+
+        Ok(eval.heap().alloc(ChannelRef {
+            id,
+            format: "generic".to_owned(),
         }))
     }
 }

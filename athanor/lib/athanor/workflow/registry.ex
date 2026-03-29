@@ -28,8 +28,9 @@ defmodule Athanor.Workflow.Registry do
 
   @type channel_meta :: %{
           label: String.t(),
-          type: :literal | :path | :result,
-          format: String.t()
+          type: :literal | :path | :result | :zip,
+          format: String.t(),
+          upstreams: [Workflow.channel_id()] | nil
         }
 
   defmodule WorkflowData do

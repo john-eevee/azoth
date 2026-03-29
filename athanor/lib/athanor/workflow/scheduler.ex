@@ -39,6 +39,12 @@ defmodule Athanor.Workflow.Scheduler do
   @typep state :: %{
            workflow_id: Workflow.id(),
            channels: %{Workflow.channel_id() => Workflow.channel()},
+           zip_channels: %{
+             Workflow.channel_id() => %{
+               upstreams: [Workflow.channel_id()],
+               cursor: non_neg_integer()
+             }
+           },
            processes: %{Workflow.process_id() => Workflow.process()},
            subscriptions: %{Workflow.channel_id() => [Workflow.subscription()]},
            running_tasks: %{Workflow.fingerprint() => Workflow.task()},
@@ -48,6 +54,7 @@ defmodule Athanor.Workflow.Scheduler do
 
   @typep message ::
            {:register_process, Workflow.process_id(), Workflow.process()}
+           | {:register_zip, Workflow.channel_id(), [Workflow.channel_id()]}
            | {:subscribe, Workflow.channel_id(), Workflow.process_id()}
            | {:publish, Workflow.channel_id(), [Workflow.artifact()]}
            | {:complete_task, Workflow.fingerprint(), [Workflow.artifact()]}
@@ -78,6 +85,14 @@ defmodule Athanor.Workflow.Scheduler do
   @spec register_process(t(), Workflow.process_id(), Workflow.process()) :: :ok
   def register_process(scheduler, process_id, process) do
     GenServer.cast(scheduler, {:register_process, process_id, process})
+  end
+
+  @doc """
+  Register a zip channel with its upstream dependencies.
+  """
+  @spec register_zip(t(), Workflow.channel_id(), [Workflow.channel_id()]) :: :ok
+  def register_zip(scheduler, zip_channel_id, upstreams) do
+    GenServer.cast(scheduler, {:register_zip, zip_channel_id, upstreams})
   end
 
   @doc """
@@ -135,6 +150,7 @@ defmodule Athanor.Workflow.Scheduler do
     state = %{
       workflow_id: workflow_id,
       channels: %{},
+      zip_channels: %{},
       processes: %{},
       subscriptions: %{},
       running_tasks: %{},
@@ -149,6 +165,11 @@ defmodule Athanor.Workflow.Scheduler do
   @spec handle_cast(message(), state()) :: {:noreply, state()}
   def handle_cast({:register_process, process_id, process}, state) do
     {:noreply, %{state | processes: Map.put(state.processes, process_id, process)}}
+  end
+
+  def handle_cast({:register_zip, zip_channel_id, upstreams}, state) do
+    zip_state = %{upstreams: upstreams, cursor: 0}
+    {:noreply, %{state | zip_channels: Map.put(state.zip_channels, zip_channel_id, zip_state)}}
   end
 
   def handle_cast({:subscribe, channel_id, process_id}, state) do
@@ -181,6 +202,7 @@ defmodule Athanor.Workflow.Scheduler do
   def handle_cast({:publish, channel_id, artifacts}, state) do
     state
     |> do_append(channel_id, artifacts)
+    |> evaluate_zips(channel_id)
     |> fan_out(channel_id)
     |> do_dispatch_next(1)
     |> then(&{:noreply, &1})
@@ -203,7 +225,10 @@ defmodule Athanor.Workflow.Scheduler do
             # Output channel id is keyed by process_id for Phase 1.
             # Phase 4 (AZ-401) will use named output channels from the Registry.
             output_channel_id = task.process_id
-            do_append(state, output_channel_id, output_artifacts) |> fan_out(output_channel_id)
+
+            do_append(state, output_channel_id, output_artifacts)
+            |> evaluate_zips(output_channel_id)
+            |> fan_out(output_channel_id)
           else
             state
           end
@@ -230,12 +255,60 @@ defmodule Athanor.Workflow.Scheduler do
     {:noreply, do_dispatch_next(state, demand)}
   end
 
-  @spec do_append(state(), Workflow.channel_id(), [Workflow.artifact()]) :: state()
+  @spec do_append(state(), Workflow.channel_id(), [Workflow.artifact()] | [[Workflow.artifact()]]) ::
+          state()
   defp do_append(state, channel_id, artifacts) do
     channel = Map.get(state.channels, channel_id, %{buf: IndexedBuffer.new(), closed?: false})
     buf = IndexedBuffer.append(channel.buf, artifacts)
     channels = Map.put(state.channels, channel_id, %{channel | buf: buf})
     %{state | channels: channels}
+  end
+
+  @spec evaluate_zips(state(), Workflow.channel_id()) :: state()
+  defp evaluate_zips(state, channel_id) do
+    dependent_zips =
+      state.zip_channels
+      |> Enum.filter(fn {_zip_id, zip_state} -> channel_id in zip_state.upstreams end)
+      |> Enum.map(fn {zip_id, _zip_state} -> zip_id end)
+
+    Enum.reduce(dependent_zips, state, fn zip_id, acc_state ->
+      try_pull_zip(acc_state, zip_id)
+    end)
+  end
+
+  defp try_pull_zip(state, zip_id) do
+    zip_state = Map.fetch!(state.zip_channels, zip_id)
+    cursor = zip_state.cursor
+
+    all_ready? =
+      Enum.all?(zip_state.upstreams, fn up_id ->
+        channel = Map.get(state.channels, up_id)
+        channel != nil and channel.buf.count > cursor
+      end)
+
+    if all_ready? do
+      zipped_item =
+        Enum.map(zip_state.upstreams, fn up_id ->
+          channel = Map.fetch!(state.channels, up_id)
+          IndexedBuffer.at(channel.buf, cursor)
+        end)
+
+      updated_zip_state = %{zip_state | cursor: cursor + 1}
+
+      state_with_cursor = %{
+        state
+        | zip_channels: Map.put(state.zip_channels, zip_id, updated_zip_state)
+      }
+
+      state_with_cursor
+      |> do_append(zip_id, [zipped_item])
+      # Cascading zips if zip channels depend on zip channels
+      |> evaluate_zips(zip_id)
+      |> fan_out(zip_id)
+      |> try_pull_zip(zip_id)
+    else
+      state
+    end
   end
 
   # For each subscription on `channel_id`, collect items since the subscription's
@@ -268,8 +341,12 @@ defmodule Athanor.Workflow.Scheduler do
 
   # Build a task for (process_id, artifact) and enqueue it unless the CAS index
   # already has an entry for the fingerprint (deduplication).
-  @spec enqueue_if_new(state(), Workflow.process_id(), Workflow.artifact()) :: state()
-  defp enqueue_if_new(state, process_id, artifact) do
+  @spec enqueue_if_new(
+          state(),
+          Workflow.process_id(),
+          Workflow.artifact() | [Workflow.artifact()]
+        ) :: state()
+  defp enqueue_if_new(state, process_id, artifact_or_artifacts) do
     process = Map.get(state.processes, process_id)
 
     if process == nil do
@@ -277,11 +354,13 @@ defmodule Athanor.Workflow.Scheduler do
 
       state
     else
+      flat_artifacts = List.flatten(List.wrap(artifact_or_artifacts))
+
       task_info = %{
         process_image: process.image,
         resolved_command: process.command,
         output_search_patterns: process.output_search_patterns,
-        input_artifacts: [artifact],
+        input_artifacts: flat_artifacts,
         output_artifacts: []
       }
 
@@ -295,7 +374,7 @@ defmodule Athanor.Workflow.Scheduler do
           process_id: process_id,
           status: :pending,
           fingerprint: fingerprint,
-          input_artifacts: [artifact],
+          input_artifacts: flat_artifacts,
           output_artifacts: []
         }
 

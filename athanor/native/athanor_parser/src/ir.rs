@@ -94,6 +94,7 @@ pub enum ChannelType {
     Path,
     Result,
     Literal,
+    Zip,
 }
 
 /// Where the channel's items originate.
@@ -106,6 +107,8 @@ pub enum ChannelSource {
     Literal { value: String },
     /// Implicit result channel produced by a process.
     Result { process_id: String },
+    /// Zips multiple channels together.
+    Zip { upstreams: Vec<String> },
 }
 
 /// The top-level parsed workflow plan.

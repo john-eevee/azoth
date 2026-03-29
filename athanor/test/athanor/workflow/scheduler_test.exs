@@ -193,6 +193,48 @@ defmodule Athanor.Workflow.SchedulerTest do
     end
   end
 
+  describe "zipping streams" do
+    test "waits for all upstream items before fanning out a zipped item" do
+      # Expect exactly 1 task dispatched (the zipped result)
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 1, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
+      {_wid, sched} = start_instance()
+
+      r1_ch = unique_id()
+      r2_ch = unique_id()
+      zip_ch = unique_id()
+      p_id = unique_id()
+
+      Scheduler.register_process(sched, p_id, process())
+      Scheduler.register_zip(sched, zip_ch, [r1_ch, r2_ch])
+
+      # Subscribe to the zip channel
+      Scheduler.subscribe(sched, zip_ch, p_id)
+
+      # Publish to R1 (should not trigger anything)
+      Scheduler.publish(sched, r1_ch, [artifact("s3://r1.fa")])
+      :sys.get_state(sched)
+      state = :sys.get_state(sched)
+      assert map_size(state.running_tasks) == 0
+
+      # Publish to R2 (should trigger the zip and fan out)
+      Scheduler.publish(sched, r2_ch, [artifact("s3://r2.fa")])
+      Scheduler.dispatch_next(sched, 1)
+
+      :sys.get_state(sched)
+      state = :sys.get_state(sched)
+
+      assert map_size(state.running_tasks) == 1
+      [task] = Map.values(state.running_tasks)
+
+      # The input artifacts should be flattened list of [r1, r2]
+      assert length(task.input_artifacts) == 2
+      assert Enum.map(task.input_artifacts, &to_string(&1.uri)) == ["s3://r1.fa", "s3://r2.fa"]
+    end
+  end
+
   describe "complete_task/3" do
     test "removes task from running and drains the queue" do
       expect(Athanor.Workflow.DispatcherMock, :dispatch, 2, fn voucher ->

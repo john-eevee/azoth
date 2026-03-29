@@ -1,5 +1,5 @@
-use crate::parser::parse;
 use crate::error::ValidationError;
+use crate::parser::parse;
 
 #[test]
 fn test_parse_valid_workflow() {
@@ -67,7 +67,10 @@ def main():
     workflow(name = "dup-test")
 "#;
     let result = parse(source);
-    assert!(matches!(result, Err(ValidationError::DuplicateProcessName { .. })));
+    assert!(matches!(
+        result,
+        Err(ValidationError::DuplicateProcessName { .. })
+    ));
 }
 
 #[test]
@@ -78,4 +81,47 @@ def main(:
 "#;
     let result = parse(source);
     assert!(matches!(result, Err(ValidationError::StarlarkError { .. })));
+}
+
+#[test]
+fn test_parse_channel_zip() {
+    let source = r#"
+def step1():
+    return process(
+        image = "test",
+        command = "echo 1",
+        inputs = {},
+        outputs = {"out": "s3://out1"},
+        resources = {"cpu": 1, "mem": 1, "disk": 1}
+    )
+
+def step2():
+    return process(
+        image = "test",
+        command = "echo 2",
+        inputs = {},
+        outputs = {"out": "s3://out2"},
+        resources = {"cpu": 1, "mem": 1, "disk": 1}
+    )
+
+def main():
+    r1 = step1()
+    r2 = step2()
+    paired = channel_zip(r1, r2)
+    workflow(name = "test-zip")
+"#;
+    let plan = parse(source).expect("Should parse zip channel");
+    assert_eq!(plan.channels.len(), 3); // 2 result channels, 1 zip channel
+
+    let zip_channel = plan
+        .channels
+        .iter()
+        .find(|c| matches!(c.channel_type, crate::ir::ChannelType::Zip))
+        .expect("Should have a zip channel");
+
+    if let crate::ir::ChannelSource::Zip { upstreams } = &zip_channel.source {
+        assert_eq!(upstreams.len(), 2);
+    } else {
+        panic!("Expected ChannelSource::Zip");
+    }
 }
