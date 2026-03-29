@@ -10,7 +10,7 @@ defmodule Athanor.Workflow.RegistryTest do
   end
 
   defp channel_meta(label, type \\ :result),
-    do: %{label: label, type: type}
+    do: %{label: label, type: type, format: "generic", upstreams: nil}
 
   defp process(image, command, input_map, output_patterns \\ []) do
     %{

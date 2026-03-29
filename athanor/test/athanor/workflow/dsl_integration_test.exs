@@ -32,7 +32,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       # 2. Start a workflow instance
       wid = Uniq.UUID.uuid7()
@@ -95,7 +104,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       start_supervised!({Registry, workflow_id: wid})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
@@ -125,7 +143,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
       subscriptions = Registry.get_subscriptions(wid)
@@ -163,7 +190,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
 
@@ -187,7 +223,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
 
@@ -228,7 +273,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
 
@@ -271,7 +325,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
       channels_by_id =
-        Map.new(plan.channels, &{&1.id, %{label: &1.id, type: channel_type(&1.channel_type)}})
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
 
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
 
@@ -302,6 +365,48 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   end
 
   # ---------------------------------------------------------------------------
+  # zip_channels.star integration test
+  # ---------------------------------------------------------------------------
+
+  describe "zip channels execution setup" do
+    test "processes can accept zipped channels as input" do
+      {:ok, plan} = Parser.parse(fixture("zip_channels.star"))
+
+      wid = Uniq.UUID.uuid7()
+      start_supervised!(TaskMonitor.registry_child_spec(wid))
+      start_supervised!({TaskMonitor, workflow_id: wid})
+      start_supervised!({Registry, workflow_id: wid})
+
+      processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
+
+      channels_by_id =
+        Map.new(
+          plan.channels,
+          &{&1.id,
+           %{
+             label: &1.id,
+             type: channel_type(&1.channel_type),
+             format: &1.format || "generic",
+             upstreams: &1.source[:upstreams]
+           }}
+        )
+
+      Registry.register_workflow(wid, channels_by_id, processes_by_id)
+
+      align = Registry.get_process_by_name(wid, "align")
+      assert align.input[:reads] != nil
+
+      zip_channel_id = align.input[:reads].channel_id
+
+      channels = Registry.get_channels(wid)
+      zip_channel = channels[zip_channel_id]
+
+      assert zip_channel.type == :zip
+      assert length(zip_channel.upstreams) == 2
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
   # Helpers
@@ -310,9 +415,11 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   defp channel_type(:path), do: :path
   defp channel_type(:literal), do: :literal
   defp channel_type(:result), do: :result
+  defp channel_type(:zip), do: :zip
   defp channel_type("path"), do: :path
   defp channel_type("literal"), do: :literal
   defp channel_type("result"), do: :result
+  defp channel_type("zip"), do: :zip
   defp channel_type(other), do: other
 
   # Transform a process from the DSL parser (with :inputs, :outputs atom keys)

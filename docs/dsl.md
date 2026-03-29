@@ -29,6 +29,7 @@ Python-inspired language that ensures execution plans are stable and reproducibl
 | `path` | Glob over a local or remote path; emits one item per matching file | `channel_from_path(glob)` |
 | `result` | Output channel produced by a process; emits items as the process writes outputs | implicit, returned by process functions |
 | `literal` | A single statically-known value; useful for injecting fixed references | `channel_literal(value)` |
+| `zip` | Synchronizes multiple channels; emits an item when all inputs have an item at the current cursor | `channel_zip(*channels)` |
 
 ---
 
