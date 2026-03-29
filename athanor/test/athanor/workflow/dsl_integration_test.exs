@@ -8,7 +8,20 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
 
   alias Athanor.DSL.Parser
   alias Athanor.Workflow.Registry
+  alias Athanor.Workflow.Scheduler
   alias Athanor.Workflow.TaskMonitor
+
+  import Mox
+
+  setup :set_mox_from_context
+  setup :verify_on_exit!
+
+  setup do
+    Application.put_env(:athanor, :dispatcher_impl, Athanor.Workflow.DispatcherMock)
+    set_mox_from_context(nil)
+    Mox.stub_with(Athanor.Workflow.DispatcherMock, Athanor.Workflow.Dispatcher.StubDispatcher)
+    :ok
+  end
 
   @fixtures Path.join([__DIR__, "../../fixtures/dsl"])
 
@@ -369,13 +382,16 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   # ---------------------------------------------------------------------------
 
   describe "zip channels execution setup" do
-    test "processes can accept zipped channels as input" do
+    test "processes can accept zipped channels as input and scheduler executes them correctly" do
+      # 1. Parse the workflow
       {:ok, plan} = Parser.parse(fixture("zip_channels.star"))
 
+      # 2. Start necessary supervisors and instances
       wid = Uniq.UUID.uuid7()
       start_supervised!(TaskMonitor.registry_child_spec(wid))
       start_supervised!({TaskMonitor, workflow_id: wid})
       start_supervised!({Registry, workflow_id: wid})
+      sched = start_supervised!({Scheduler, workflow_id: wid, max_concurrency: 4})
 
       processes_by_id = Map.new(plan.processes, &{&1.id, dsl_process_to_runtime(&1)})
 
@@ -387,22 +403,77 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
              label: &1.id,
              type: channel_type(&1.channel_type),
              format: &1.format || "generic",
-             upstreams: &1.source[:upstreams]
+             upstreams: &1.source[:upstreams] || []
            }}
         )
 
+      # 3. Register the workflow in the central Registry
       Registry.register_workflow(wid, channels_by_id, processes_by_id)
 
+      # 4. Mirror the setup to the Scheduler (this is usually done by an orchestrator supervisor)
+      for {proc_id, proc} <- processes_by_id do
+        Scheduler.register_process(sched, proc_id, proc)
+      end
+
+      for {channel_id, channel} <- channels_by_id do
+        if channel.type == :zip do
+          Scheduler.register_zip(sched, channel_id, channel.upstreams)
+        end
+      end
+
+      # Subscribe based on the Registry's computed subscriptions
+      subscriptions = Registry.get_subscriptions(wid)
+
+      for {channel_id, subs} <- subscriptions, process_id <- subs do
+        Scheduler.subscribe(sched, channel_id, process_id)
+      end
+
+      # 5. Extract specific IDs for our test assertions
       align = Registry.get_process_by_name(wid, "align")
       assert align.input[:reads] != nil
-
       zip_channel_id = align.input[:reads].channel_id
 
       channels = Registry.get_channels(wid)
       zip_channel = channels[zip_channel_id]
-
       assert zip_channel.type == :zip
       assert length(zip_channel.upstreams) == 2
+      [r1_ch, r2_ch] = zip_channel.upstreams
+
+      # 6. Expect dispatch to be called when the zipped item is complete
+      expect(Athanor.Workflow.DispatcherMock, :dispatch, 1, fn voucher ->
+        {:ok, voucher.fingerprint}
+      end)
+
+      # 7. Push data to the upstream channels
+      artifact_r1 = %{uri: URI.parse("s3://r1.fastq"), hash: "sha256:1", metadata: %{}}
+      Scheduler.publish(sched, r1_ch, [artifact_r1])
+
+      # Assert no task dispatched yet
+      :sys.get_state(sched)
+      state = :sys.get_state(sched)
+      assert map_size(state.running_tasks) == 0
+
+      # Push matching data to the second channel
+      artifact_r2 = %{uri: URI.parse("s3://r2.fastq"), hash: "sha256:2", metadata: %{}}
+      Scheduler.publish(sched, r2_ch, [artifact_r2])
+
+      # Tell scheduler to dispatch whatever is ready
+      Scheduler.dispatch_next(sched, 1)
+      :sys.get_state(sched)
+      state = :sys.get_state(sched)
+
+      # 8. Assert that the fan-out created a task with both artifacts flattened
+      assert map_size(state.running_tasks) == 1
+      [task] = Map.values(state.running_tasks)
+
+      align_proc_id = Enum.find(plan.processes, &(&1.name == "align")).id
+      assert task.process_id == align_proc_id
+      assert length(task.input_artifacts) == 2
+
+      assert Enum.map(task.input_artifacts, &to_string(&1.uri)) == [
+               "s3://r1.fastq",
+               "s3://r2.fastq"
+             ]
     end
   end
 
