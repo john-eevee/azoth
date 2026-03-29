@@ -36,8 +36,12 @@ defmodule Athanor.Workflow.RegistryTest do
       channels = %{ch1 => channel_meta("ch1"), ch2 => channel_meta("ch2")}
 
       processes = %{
-        p1 => process("img", "cmd", %{"in" => ch1}),
-        p2 => process("img", "cmd", %{"a" => ch1, "b" => ch2})
+        p1 => process("img", "cmd", %{"in" => %{channel_id: ch1, format: "generic"}}),
+        p2 =>
+          process("img", "cmd", %{
+            "a" => %{channel_id: ch1, format: "generic"},
+            "b" => %{channel_id: ch2, format: "generic"}
+          })
       }
 
       :ok = WorkflowRegistry.register_workflow(wid, channels, processes)
@@ -68,7 +72,7 @@ defmodule Athanor.Workflow.RegistryTest do
 
       :ok =
         WorkflowRegistry.register_workflow(wid, %{ch => channel_meta("ch")}, %{
-          p => process("img", "cmd", %{"in" => ch})
+          p => process("img", "cmd", %{"in" => %{channel_id: ch, format: "generic"}})
         })
 
       assert p in WorkflowRegistry.get_subscriptions(wid)[ch]

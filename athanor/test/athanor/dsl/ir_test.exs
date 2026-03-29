@@ -58,7 +58,7 @@ defmodule Athanor.DSL.IRTest do
       {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
       align = Enum.find(plan.processes, &(&1.image.tag == "genomics/bwa:0.7.17"))
       # Jason decodes with keys: :atoms, so map keys are atoms.
-      assert align.outputs.value[:output] =~ "s3://my-bucket/aligned/"
+      assert align.outputs.value[:output].uri =~ "s3://my-bucket/aligned/"
     end
 
     test "glob OutputDef carries list of patterns" do

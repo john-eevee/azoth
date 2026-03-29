@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 
-use crate::channel_ref::ChannelRef;
+use crate::channel_ref::{ChannelRef, InputRef, OutputRef};
+use crate::ir::InputDef;
+use crate::ir::OutputFileDef;
 use anyhow::anyhow;
 use starlark::any::ProvidesStaticType;
 use starlark::environment::GlobalsBuilder;
@@ -88,17 +90,56 @@ fn starlark_process(builder: &mut GlobalsBuilder) {
         let name = resolve_process_name(&kwargs, eval)?;
 
         let desc = extract_process(process_id.clone(), name, &kwargs)?;
+
+        let mut result_format = "generic".to_string();
+        if let OutputDef::Static(outputs_map) = &desc.outputs {
+            if let Some((_, out_file_def)) = outputs_map.iter().next() {
+                result_format = out_file_def.format.clone();
+            }
+        }
+
         output.processes.borrow_mut().push(desc);
 
         // A process creates an implicit Result channel representing its outputs
         let channel_id = format!("chan_{}", process_id);
+
         output.channels.borrow_mut().push(ChannelDef {
             id: channel_id.clone(),
             channel_type: ChannelType::Result,
             source: ChannelSource::Result { process_id },
+            format: result_format.clone(),
         });
 
-        Ok(eval.heap().alloc(ChannelRef { id: channel_id }))
+        Ok(eval.heap().alloc(ChannelRef {
+            id: channel_id,
+            format: result_format,
+        }))
+    }
+}
+
+#[starlark_module]
+fn starlark_types(builder: &mut GlobalsBuilder) {
+    fn Input<'v>(
+        channel: Value<'v>,
+        #[starlark(require = named, default = "generic")] format: &str,
+    ) -> anyhow::Result<InputRef> {
+        let chan = channel
+            .downcast_ref::<ChannelRef>()
+            .ok_or_else(|| anyhow!("Input() requires a Channel"))?;
+        Ok(InputRef {
+            channel: chan.clone(),
+            format: format.to_owned(),
+        })
+    }
+
+    fn Output<'v>(
+        uri: &str,
+        #[starlark(require = named, default = "generic")] format: &str,
+    ) -> anyhow::Result<OutputRef> {
+        Ok(OutputRef {
+            uri: uri.to_owned(),
+            format: format.to_owned(),
+        })
     }
 }
 
@@ -106,6 +147,7 @@ fn starlark_process(builder: &mut GlobalsBuilder) {
 fn starlark_channel(builder: &mut GlobalsBuilder) {
     fn channel_from_path<'v>(
         glob: &str,
+        #[starlark(require = named, default = "generic")] format: &str,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
@@ -116,12 +158,17 @@ fn starlark_channel(builder: &mut GlobalsBuilder) {
             source: ChannelSource::FromPath {
                 glob: glob.to_owned(),
             },
+            format: format.to_owned(),
         });
-        Ok(eval.heap().alloc(ChannelRef { id }))
+        Ok(eval.heap().alloc(ChannelRef {
+            id,
+            format: format.to_owned(),
+        }))
     }
 
     fn channel_literal<'v>(
         value: &str,
+        #[starlark(require = named, default = "generic")] format: &str,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
@@ -132,12 +179,17 @@ fn starlark_channel(builder: &mut GlobalsBuilder) {
             source: ChannelSource::Literal {
                 value: value.to_owned(),
             },
+            format: format.to_owned(),
         });
-        Ok(eval.heap().alloc(ChannelRef { id }))
+        Ok(eval.heap().alloc(ChannelRef {
+            id,
+            format: format.to_owned(),
+        }))
     }
 
     fn channel_join<'v>(
         _args: Value<'v>,
+        #[starlark(require = named, default = "generic")] format: &str,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<Value<'v>> {
         let output = extra(eval)?;
@@ -148,8 +200,12 @@ fn starlark_channel(builder: &mut GlobalsBuilder) {
             source: ChannelSource::Result {
                 process_id: format!("join_{id}"),
             },
+            format: format.to_owned(),
         });
-        Ok(eval.heap().alloc(ChannelRef { id }))
+        Ok(eval.heap().alloc(ChannelRef {
+            id,
+            format: format.to_owned(),
+        }))
     }
 }
 
@@ -392,7 +448,7 @@ fn require_str(kwargs: &DictRef<'_>, key: &str, proc_name: &str) -> anyhow::Resu
 fn extract_inputs(
     kwargs: &DictRef<'_>,
     proc_name: &str,
-) -> anyhow::Result<BTreeMap<String, String>> {
+) -> anyhow::Result<BTreeMap<String, InputDef>> {
     let val = kwargs
         .get_str("inputs")
         .ok_or_else(|| anyhow!("process '{proc_name}': missing 'inputs'"))?;
@@ -408,10 +464,24 @@ fn extract_inputs(
             .to_owned();
 
         if let Some(chan) = v.downcast_ref::<ChannelRef>() {
-            map.insert(key, chan.id.clone());
+            map.insert(
+                key,
+                InputDef {
+                    channel_id: chan.id.clone(),
+                    format: "generic".to_string(),
+                },
+            );
+        } else if let Some(inp) = v.downcast_ref::<InputRef>() {
+            map.insert(
+                key,
+                InputDef {
+                    channel_id: inp.channel.id.clone(),
+                    format: inp.format.clone(),
+                },
+            );
         } else {
             return Err(anyhow!(
-                "process '{proc_name}': input '{key}' must be a channel (use channel_literal or pass the output of a process)"
+                "process '{proc_name}': input '{key}' must be a channel or Input() wrapper"
             ));
         }
     }
@@ -430,13 +500,28 @@ fn extract_outputs(kwargs: &DictRef<'_>, proc_name: &str) -> anyhow::Result<Outp
                 .unpack_str()
                 .ok_or_else(|| anyhow!("process '{proc_name}': output key must be a string"))?
                 .to_owned();
-            let uri = v
-                .unpack_str()
-                .ok_or_else(|| {
-                    anyhow!("process '{proc_name}': output '{key}' must be a string URI")
-                })?
-                .to_owned();
-            map.insert(key, uri);
+
+            if let Some(uri) = v.unpack_str() {
+                map.insert(
+                    key,
+                    OutputFileDef {
+                        uri: uri.to_owned(),
+                        format: "generic".to_string(),
+                    },
+                );
+            } else if let Some(out) = v.downcast_ref::<OutputRef>() {
+                map.insert(
+                    key,
+                    OutputFileDef {
+                        uri: out.uri.clone(),
+                        format: out.format.clone(),
+                    },
+                );
+            } else {
+                return Err(anyhow!(
+                    "process '{proc_name}': output '{key}' must be a string URI or Output() wrapper"
+                ));
+            }
         }
         return Ok(OutputDef::Static(map));
     }
@@ -505,6 +590,7 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
         .with(starlark_process)
         .with(starlark_channel)
         .with(starlark_workflow)
+        .with(starlark_types)
         .build();
 
     let module = Module::new();

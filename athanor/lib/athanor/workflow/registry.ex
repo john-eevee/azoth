@@ -28,7 +28,8 @@ defmodule Athanor.Workflow.Registry do
 
   @type channel_meta :: %{
           label: String.t(),
-          type: :literal | :path | :result
+          type: :literal | :path | :result,
+          format: String.t()
         }
 
   defmodule WorkflowData do
@@ -136,8 +137,8 @@ defmodule Athanor.Workflow.Registry do
 
   defp derive_subscriptions(processes) do
     Enum.reduce(processes, %{}, fn {process_id, process}, acc ->
-      Enum.reduce(process.input, acc, fn {_name, channel_id}, subs ->
-        Map.update(subs, channel_id, [process_id], &[process_id | &1])
+      Enum.reduce(process.input, acc, fn {_name, input_def}, subs ->
+        Map.update(subs, input_def.channel_id, [process_id], &[process_id | &1])
       end)
     end)
   end

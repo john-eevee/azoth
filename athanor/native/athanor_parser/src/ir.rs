@@ -28,11 +28,23 @@ pub struct ProcessDescriptor {
     pub image: ImageDef,
     pub command: String,
     /// Sorted map of input-name → ArtifactRef URI / channel item placeholder.
-    pub inputs: BTreeMap<String, String>,
+    pub inputs: BTreeMap<String, InputDef>,
     pub outputs: OutputDef,
     pub resources: ResourceDef,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry: Option<RetryDef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InputDef {
+    pub channel_id: String,
+    pub format: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OutputFileDef {
+    pub uri: String,
+    pub format: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -54,7 +66,7 @@ pub enum RetryDef {
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum OutputDef {
     /// Named URI templates known at parse time  (e.g. `{"output": "s3://…/{reads.stem}.bam"}`).
-    Static(BTreeMap<String, String>),
+    Static(BTreeMap<String, OutputFileDef>),
     /// Glob patterns resolved by Quicksilver at runtime (e.g. `["./chunks/*.fa"]`).
     Glob(Vec<String>),
 }
@@ -73,6 +85,7 @@ pub struct ChannelDef {
     pub id: String,
     pub channel_type: ChannelType,
     pub source: ChannelSource,
+    pub format: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

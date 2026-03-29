@@ -57,6 +57,17 @@ pub enum ValidationError {
          (process names must be unique within a workflow)"
     )]
     DuplicateProcessName { workflow_name: String, name: String },
+
+    /// Channel type mismatch between what a process expects and what it receives.
+    #[error(
+        "process '{process_id}': type mismatch on input channel \
+         (expected format '{expected}', but channel provides '{got}')"
+    )]
+    TypeMismatch {
+        process_id: String,
+        expected: String,
+        got: String,
+    },
 }
 
 /// Convenience alias.

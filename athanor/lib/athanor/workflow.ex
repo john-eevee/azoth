@@ -69,7 +69,8 @@ defmodule Athanor.Workflow do
 
   @type channel() :: %{
           buf: IndexedBuffer.t(),
-          closed?: boolean()
+          closed?: boolean(),
+          format: String.t()
         }
 
   @type channel_id() :: id()
@@ -89,11 +90,21 @@ defmodule Athanor.Workflow do
           }
           | %{backoff: :linear, count: non_neg_integer(), delays: [non_neg_integer()]}
 
+  @type input_def() :: %{
+          channel_id: channel_id(),
+          format: String.t()
+        }
+
+  @type output_file_def() :: %{
+          uri: String.t(),
+          format: String.t()
+        }
+
   @type process() :: %{
           name: String.t(),
           image: String.t(),
           command: String.t(),
-          input: %{String.t() => channel_id()},
+          input: %{String.t() => input_def()},
           output_search_patterns: [Path.t()],
           resources: %{
             mem: non_neg_integer() | :inf,
