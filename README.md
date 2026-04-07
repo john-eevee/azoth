@@ -1,6 +1,6 @@
 # Azoth
 
-A distributed reactive workflow engine. Azoth is composed of two sub-systems:
+A distributed reactive workflow engine based on files. We don't stream data; we stream information that allows the execution to be close to the data, instead of streaming data to the execution. Azoth is composed of two sub-systems:
 
 - **Athanor** — Elixir/OTP control-plane: workflow parsing, state management, reactive scheduling, retries, and UI/API.
 - **Quicksilver** — Rust data-plane: worker agent, data staging, task execution, log streaming, and runtime isolation.
