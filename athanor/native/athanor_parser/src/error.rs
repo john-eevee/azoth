@@ -68,6 +68,17 @@ pub enum ValidationError {
         expected: String,
         got: String,
     },
+
+    #[error("process '{process_id}': invalid retry backoff strategy '{strategy}'")]
+    InvalidRetryStrategy {
+        process_id: String,
+        strategy: String,
+    },
+
+    #[error("process '{process_id}': retry must be a dict or valid node")]
+    InvalidRetryFormat {
+        process_id: String,
+    },
 }
 
 /// Convenience alias.

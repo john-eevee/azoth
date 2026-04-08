@@ -308,7 +308,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
       dsl_proc1 = Enum.find(plan.processes, &(&1.name == "process_one"))
       assert dsl_proc1.outputs.value[:out_val].uri == "s3://bucket/test.txt"
 
-      assert String.starts_with?(proc2.input[:in2_val].channel_id, "chan_")
+      assert proc2.input[:in2_val].channel_id == "out1"
 
       subscriptions = Registry.get_subscriptions(wid)
 
@@ -358,7 +358,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
 
       # Validate consumer reads from the producer channel directly
       consumer = Registry.get_process_by_name(wid, "consumer")
-      assert String.starts_with?(consumer.input[:input].channel_id, "chan_")
+      assert consumer.input[:input].channel_id == "producer_output"
 
       # Validate no channel from_path was generated (it was removed in the refactor)
       glob_channel = Enum.find(plan.channels, &(&1.channel_type == "path"))

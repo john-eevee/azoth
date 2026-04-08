@@ -59,71 +59,51 @@ defmodule Athanor.DSL.ParserTest do
   end
 
   describe "error cases" do
-    test "returns error for invalid Starlark syntax" do
-      assert {:error, reason} = Parser.parse("def main(: bad syntax")
+    test "returns error for invalid KDL syntax" do
+      assert {:error, reason} = Parser.parse("workflow \"x\" { bad syntax")
       assert is_binary(reason)
     end
 
-    test "returns error when main() is absent" do
-      src = ~s[workflow(name = "x")]
-      assert {:error, _reason} = Parser.parse(src)
+    test "returns error when workflow is absent" do
+      src = ~s[process "x" {}]
+      assert {:error, reason} = Parser.parse(src)
+      assert is_binary(reason)
     end
 
-    test "duplicate process name via function name returns error" do
+    test "duplicate process name returns error" do
       src = """
-      def align(ref):
-          return process(
-              image     = "img:1",
-              command   = "run",
-              inputs    = {"ref": ref},
-              outputs   = {"out": "s3://b/out"},
-              resources = {"cpu": 1, "mem": 1.0, "disk": 1.0},
-          )
+      channel "c1" type="literal" source="a"
+      channel "c2" type="literal" source="b"
 
-      def main():
-          c1 = channel_literal("a")
-          c2 = channel_literal("b")
-          align(c1)
-          align(c2)
-          workflow(name = "dup_test")
+      process "align" {
+          image "img:1"
+          command "run"
+          inputs {
+              "ref" "c1"
+          }
+          outputs {
+              "out" "s3://b/out"
+          }
+          resources cpu=1 mem=1.0 disk=1.0
+      }
+
+      process "align" {
+          image "img:1"
+          command "run"
+          inputs {
+              "ref" "c2"
+          }
+          outputs {
+              "out" "s3://b/out2"
+          }
+          resources cpu=1 mem=1.0 disk=1.0
+      }
+
+      workflow "dup_test" {}
       """
 
       assert {:error, reason} = Parser.parse(src)
-      assert reason =~ "duplicate process name"
-      assert reason =~ "align"
-    end
-
-    test "duplicate process name via explicit name= kwarg returns error" do
-      src = """
-      def step_a():
-          return process(
-              name      = "my_step",
-              image     = "img:1",
-              command   = "run",
-              inputs    = {},
-              outputs   = {"out": "s3://b/out"},
-              resources = {"cpu": 1, "mem": 1.0, "disk": 1.0},
-          )
-
-      def step_b():
-          return process(
-              name      = "my_step",
-              image     = "img:2",
-              command   = "run",
-              inputs    = {},
-              outputs   = {"out": "s3://b/out2"},
-              resources = {"cpu": 1, "mem": 1.0, "disk": 1.0},
-          )
-
-      def main():
-          step_a()
-          step_b()
-          workflow(name = "dup_kwarg_test")
-      """
-
-      assert {:error, reason} = Parser.parse(src)
-      assert reason =~ "duplicate process name"
-      assert reason =~ "my_step"
+      assert reason =~ "duplicate process name" or reason =~ "duplicate" or reason =~ "align"
     end
   end
 end

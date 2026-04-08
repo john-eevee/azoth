@@ -1,9 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use anyhow::anyhow;
-use kdl::{KdlDocument, KdlNode};
+use kdl::KdlDocument;
 
-use crate::error::{ValidationError, ValidationErrors};
+use crate::error::ValidationError;
 use crate::ir::{
     ChannelDef, ChannelSource, ChannelType, ImageDef, InputDef, OutputDef, OutputFileDef,
     ProcessDescriptor, ResourceDef, RetryDef, WorkflowPlan,
@@ -18,13 +17,6 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
     let mut workflow_name = None;
     let mut processes = Vec::new();
     let mut channels = Vec::new();
-
-    let mut counter = 0;
-    let mut next_id = || {
-        let id = format!("id_{counter}");
-        counter += 1;
-        id
-    };
 
     for node in document.nodes() {
         match node.name().value() {
@@ -78,7 +70,7 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                                         if let Some(val) = in_node.get(0).and_then(|v| v.as_string()) {
                                             inputs.insert(key, InputDef {
                                                 channel_id: val.to_string(),
-                                                format: "generic".to_string(),
+                                                format: in_node.get("format").and_then(|v| v.as_string()).unwrap_or("generic").to_string(),
                                             });
                                         }
                                     }
@@ -94,7 +86,7 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                                             } else {
                                                 static_outputs.insert(key, OutputFileDef {
                                                     uri: val.to_string(),
-                                                    format: "generic".to_string(),
+                                                    format: out_node.get("format").and_then(|v| v.as_string()).unwrap_or("generic").to_string(),
                                                 });
                                             }
                                         }
@@ -102,32 +94,47 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                                 }
                             }
                             "retry" => {
+                                if child.get(0).is_some() {
+                                    return Err(ValidationError::InvalidRetryFormat {
+                                        process_id: id.clone(),
+                                    });
+                                }
+
                                 let backoff = child.get("backoff").and_then(|v| v.as_string()).unwrap_or("linear");
                                 let count = child.get("count").and_then(|v| v.as_integer()).unwrap_or(3) as u32;
-                                if backoff == "exponential" {
-                                    retry = Some(RetryDef::Exponential {
-                                        count,
-                                        exponent: child.get("exponent").and_then(|v| v.as_float()).unwrap_or(2.0),
-                                        initial_delay: child.get("initial_delay").and_then(|v| v.as_integer()).unwrap_or(500) as u32,
-                                    });
-                                } else {
-                                    let mut delays = Vec::new();
-                                    if let Some(d) = child.get("delays").and_then(|v| v.as_string()) {
-                                        for x in d.split(',') {
-                                            if let Ok(num) = x.trim().parse::<u32>() {
-                                                delays.push(num);
+                                match backoff {
+                                    "exponential" => {
+                                        retry = Some(RetryDef::Exponential {
+                                            count,
+                                            exponent: child.get("exponent").and_then(|v| v.as_float()).unwrap_or(2.0),
+                                            initial_delay: child.get("initial_delay").and_then(|v| v.as_integer()).unwrap_or(500) as u32,
+                                        });
+                                    }
+                                    "linear" => {
+                                        let mut delays = Vec::new();
+                                        if let Some(d) = child.get("delays").and_then(|v| v.as_string()) {
+                                            for x in d.split(',') {
+                                                if let Ok(num) = x.trim().parse::<u32>() {
+                                                    delays.push(num);
+                                                }
                                             }
                                         }
+                                        if delays.is_empty() { delays.push(1000); }
+                                        // Pad or truncate
+                                        if delays.len() < count as usize {
+                                            let last = *delays.last().unwrap_or(&1000);
+                                            delays.resize(count as usize, last);
+                                        } else if delays.len() > count as usize {
+                                            delays.truncate(count as usize);
+                                        }
+                                        retry = Some(RetryDef::Linear { count, delays });
                                     }
-                                    if delays.is_empty() { delays.push(1000); }
-                                    // Pad or truncate
-                                    if delays.len() < count as usize {
-                                        let last = *delays.last().unwrap_or(&1000);
-                                        delays.resize(count as usize, last);
-                                    } else if delays.len() > count as usize {
-                                        delays.truncate(count as usize);
+                                    other => {
+                                        return Err(ValidationError::InvalidRetryStrategy {
+                                            process_id: id.clone(),
+                                            strategy: other.to_string(),
+                                        });
                                     }
-                                    retry = Some(RetryDef::Linear { count, delays });
                                 }
                             }
                             _ => {}
@@ -175,7 +182,7 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                     id,
                     channel_type,
                     source,
-                    format: "generic".to_string(),
+                    format: node.get("format").and_then(|v| v.as_string()).unwrap_or("generic").to_string(),
                 });
             }
             _ => {}
@@ -194,6 +201,25 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                 workflow_name: workflow_name.clone(),
                 name: proc.name.clone(),
             });
+        }
+    }
+
+    let mut channel_formats = HashMap::new();
+    for ch in &channels {
+        channel_formats.insert(ch.id.clone(), ch.format.clone());
+    }
+
+    for proc in &processes {
+        for (_input_name, input_def) in &proc.inputs {
+            if let Some(ch_format) = channel_formats.get(&input_def.channel_id) {
+                if input_def.format != "generic" && ch_format != "generic" && input_def.format != *ch_format {
+                    return Err(ValidationError::TypeMismatch {
+                        process_id: proc.id.clone(),
+                        expected: input_def.format.clone(),
+                        got: ch_format.clone(),
+                    });
+                }
+            }
         }
     }
 

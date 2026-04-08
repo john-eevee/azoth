@@ -51,10 +51,10 @@ defmodule Athanor.Workflow.IdempotencyTest do
 
     # Add comments and spacing
     script2 = """
-    # This is a comment added at the top
+    // This is a comment added at the top
     #{script1}
 
-    # And some trailing whitespace
+    // And some trailing whitespace
     """
 
     {:ok, %{fingerprint: hash1}} = Parser.parse_and_fingerprint(script1)

@@ -3,7 +3,7 @@
     {
       "channel_type": "literal",
       "format": "generic",
-      "id": "id_0",
+      "id": "ref",
       "source": {
         "kind": "literal",
         "value": "s3://my-bucket/refs/hg38.fa"
@@ -12,7 +12,7 @@
     {
       "channel_type": "literal",
       "format": "generic",
-      "id": "id_1",
+      "id": "reads",
       "source": {
         "kind": "literal",
         "value": "s3://my-bucket/data/sample_R1.fq.gz"
@@ -21,19 +21,19 @@
     {
       "channel_type": "result",
       "format": "generic",
-      "id": "chan_id_2",
+      "id": "chunks",
       "source": {
         "kind": "result",
-        "process_id": "id_2"
+        "process_id": "split_genome"
       }
     },
     {
       "channel_type": "result",
       "format": "generic",
-      "id": "chan_id_3",
+      "id": "bams",
       "source": {
         "kind": "result",
-        "process_id": "id_3"
+        "process_id": "align_chunk"
       }
     }
   ],
@@ -41,13 +41,13 @@
   "processes": [
     {
       "command": "split_tool {ref} --output-dir ./chunks/",
-      "id": "id_2",
+      "id": "split_genome",
       "image": {
         "tag": "genomics/tools:latest"
       },
       "inputs": {
         "ref": {
-          "channel_id": "id_0",
+          "channel_id": "ref",
           "format": "generic"
         }
       },
@@ -66,17 +66,17 @@
     },
     {
       "command": "bwa mem -t {cpu} {chunk} {reads} -o {output}",
-      "id": "id_3",
+      "id": "align_chunk",
       "image": {
         "tag": "genomics/bwa:0.7.17"
       },
       "inputs": {
         "chunk": {
-          "channel_id": "chan_id_2",
+          "channel_id": "chunks",
           "format": "generic"
         },
         "reads": {
-          "channel_id": "id_1",
+          "channel_id": "reads",
           "format": "generic"
         }
       },
