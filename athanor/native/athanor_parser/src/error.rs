@@ -43,12 +43,12 @@ pub enum ValidationError {
         value: f64,
     },
 
-    /// The Starlark source could not be parsed or evaluated.
-    #[error("starlark evaluation failed: {message}")]
-    StarlarkError { message: String },
+    /// The source that could not be parsed or evaluated.
+    #[error("parse failed: {message}")]
+    InternalParseError { message: String },
 
-    /// The `workflow()` call was not found in `main()`.
-    #[error("no workflow() call found — main() must return workflow(...)")]
+    /// The `workflow` key was not found in the file.
+    #[error("no workflow found on the root of the file")]
     NoWorkflowFound,
 
     /// Two processes in the same workflow share the same name.
