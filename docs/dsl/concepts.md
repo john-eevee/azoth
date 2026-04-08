@@ -56,23 +56,25 @@ matching the control-plane model.
 When output filenames are known in advance, declare them as URI templates:
 
 ```kdl
-process "align" {
-    image "genomics/bwa:0.7.17"
-    command "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}"
-    
-    inputs {
-        ref channel="ref_channel" format="fasta"
-        reads channel="reads_channel" format="fastq"
-    }
-    
-    outputs {
-        output "s3://my-bucket/aligned/{reads.stem}.bam" format="bam"
-    }
-    
-    resources {
-        cpu 8
-        mem 16.0   // GB
-        disk 50.0  // GB
+workflow "example_workflow" {
+    process "align" {
+        image "genomics/bwa:0.7.17"
+        command "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}"
+
+        inputs {
+            ref channel="ref_channel" format="fasta"
+            reads channel="reads_channel" format="fastq"
+        }
+
+        outputs {
+            output "s3://my-bucket/aligned/{reads.stem}.bam" format="bam"
+        }
+
+        resources {
+            cpu 8
+            mem 16.0   // GB
+            disk 50.0  // GB
+        }
     }
 }
 ```
@@ -86,24 +88,26 @@ after the container exits, uploads every matching file to object storage, and
 publishes the resulting `ArtifactRef` array back to Athanor.
 
 ```kdl
-process "split_genome" {
-    image "genomics/tools:latest"
-    command "split_tool {ref} --output-dir ./chunks/"
-    
-    inputs {
-        ref channel="ref_channel"
-    }
-    
-    // Glob pattern: Quicksilver resolves this at runtime.
-    // Athanor never sees the filesystem; it only receives the ArtifactRefs.
-    outputs {
-        glob "./chunks/*.fa"
-    }
-    
-    resources {
-        cpu 2
-        mem 4.0
-        disk 20.0
+workflow "example_workflow" {
+    process "split_genome" {
+        image "genomics/tools:latest"
+        command "split_tool {ref} --output-dir ./chunks/"
+
+        inputs {
+            ref channel="ref_channel"
+        }
+
+        // Glob pattern: Quicksilver resolves this at runtime.
+        // Athanor never sees the filesystem; it only receives the ArtifactRefs.
+        outputs {
+            glob "./chunks/*.fa"
+        }
+
+        resources {
+            cpu 2
+            mem 4.0
+            disk 20.0
+        }
     }
 }
 ```
@@ -136,7 +140,9 @@ Emits one `ArtifactRef` per path matching the glob. The channel type is `path`.
 Supports local paths and object-store URIs.
 
 ```kdl
-channel "reads_channel" type="path" glob="s3://my-bucket/data/*.fastq.gz"
+workflow "example_workflow" {
+    channel "reads_channel" type="path" glob="s3://my-bucket/data/*.fastq.gz"
+}
 ```
 
 ### `channel type="literal"`
@@ -145,7 +151,9 @@ Wraps a single static value as a one-item channel. The channel type is `literal`
 Useful for injecting a shared reference artifact into a fan-out.
 
 ```kdl
-channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
+workflow "example_workflow" {
+    channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
+}
 ```
 
 ---

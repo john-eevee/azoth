@@ -35,12 +35,14 @@ Describes a unit of work to be executed on Quicksilver workers.
 
 **Syntax**:
 ```kdl
-process "name" {
-    image "..."
-    command "..."
-    inputs { ... }
-    outputs { ... }
-    resources { ... }
+workflow "example_workflow" {
+    process "name" {
+        image "..."
+        command "..."
+        inputs { ... }
+        outputs { ... }
+        resources { ... }
+    }
 }
 ```
 
@@ -98,7 +100,9 @@ Emits one `ArtifactRef` per path matching the glob.
 
 **Syntax**:
 ```kdl
-channel "name" type="path" glob="s3://bucket/*.csv"
+workflow "example_workflow" {
+    channel "name" type="path" glob="s3://bucket/*.csv"
+}
 ```
 
 ### `channel type="literal"`
@@ -107,7 +111,9 @@ Injects a statically-known item or list as a one-time emit on a channel.
 
 **Syntax**:
 ```kdl
-channel "name" type="literal" value="s3://bucket/ref.fa"
+workflow "example_workflow" {
+    channel "name" type="literal" value="s3://bucket/ref.fa"
+}
 ```
 
 ### `channel type="zip"`
@@ -116,7 +122,9 @@ Synchronizes multiple channels, emitting an item only when all bound inputs have
 
 **Syntax**:
 ```kdl
-channel "name" type="zip" channels="channel1,channel2"
+workflow "example_workflow" {
+    channel "name" type="zip" channels="channel1,channel2"
+}
 ```
 
 ### `channel type="join"`
@@ -125,5 +133,7 @@ Waits for upstream processes to completely finish (and their output channels to 
 
 **Syntax**:
 ```kdl
-channel "name" type="join" channels="channel1"
+workflow "example_workflow" {
+    channel "name" type="join" channels="channel1"
+}
 ```

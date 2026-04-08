@@ -72,34 +72,34 @@ defmodule Athanor.DSL.ParserTest do
 
     test "duplicate process name returns error" do
       src = """
-      channel "c1" type="literal" source="a"
-      channel "c2" type="literal" source="b"
+      workflow "dup_test" {
+            channel "c1" type="literal" source="a"
+            channel "c2" type="literal" source="b"
 
-      process "align" {
-          image "img:1"
-          command "run"
-          inputs {
-              "ref" "c1"
-          }
-          outputs {
-              "out" "s3://b/out"
-          }
-          resources cpu=1 mem=1.0 disk=1.0
+            process "align" {
+                image "img:1"
+                command "run"
+                inputs {
+                    "ref" "c1"
+                }
+                outputs {
+                    "out" "s3://b/out"
+                }
+                resources cpu=1 mem=1.0 disk=1.0
+            }
+
+            process "align" {
+                image "img:1"
+                command "run"
+                inputs {
+                    "ref" "c2"
+                }
+                outputs {
+                    "out" "s3://b/out2"
+                }
+                resources cpu=1 mem=1.0 disk=1.0
+            }
       }
-
-      process "align" {
-          image "img:1"
-          command "run"
-          inputs {
-              "ref" "c2"
-          }
-          outputs {
-              "out" "s3://b/out2"
-          }
-          resources cpu=1 mem=1.0 disk=1.0
-      }
-
-      workflow "dup_test" {}
       """
 
       assert {:error, reason} = Parser.parse(src)
