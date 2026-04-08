@@ -1,0 +1,32 @@
+channel "ref" type="literal" source="s3://my-bucket/refs/hg38.fa"
+channel "reads" type="literal" source="s3://my-bucket/data/sample_R1.fq.gz"
+channel "chunks" type="result" source="split_genome"
+channel "bams" type="result" source="align_chunk"
+
+process "split_genome" {
+    image "genomics/tools:latest"
+    command "split_tool {ref} --output-dir ./chunks/"
+    inputs {
+        ref "ref"
+    }
+    outputs {
+        output "./chunks/*.fa"
+    }
+    resources cpu=2 mem=4.0 disk=20.0
+}
+
+process "align_chunk" {
+    image "genomics/bwa:0.7.17"
+    command "bwa mem -t {cpu} {chunk} {reads} -o {output}"
+    inputs {
+        chunk "chunks"
+        reads "reads"
+    }
+    outputs {
+        output "s3://my-bucket/aligned/{chunk.stem}.bam"
+    }
+    resources cpu=8 mem=16.0 disk=50.0
+}
+
+workflow "dynamic_split_align" {
+}

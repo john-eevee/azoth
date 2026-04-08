@@ -9,7 +9,7 @@ defmodule Athanor.DSL.HashStabilityTest do
   defp fixture(name), do: File.read!(Path.join(@fixtures, name))
 
   test "genomics_pipeline fingerprint is stable across #{@iterations} parses" do
-    src = fixture("genomics_pipeline.star")
+    src = fixture("genomics_pipeline.kdl")
 
     hashes =
       for _ <- 1..@iterations do
@@ -22,7 +22,7 @@ defmodule Athanor.DSL.HashStabilityTest do
   end
 
   test "dynamic_split_align fingerprint is stable across #{@iterations} parses" do
-    src = fixture("dynamic_split_align.star")
+    src = fixture("dynamic_split_align.kdl")
 
     hashes =
       for _ <- 1..@iterations do
@@ -35,7 +35,7 @@ defmodule Athanor.DSL.HashStabilityTest do
   end
 
   test "changing a command string changes the fingerprint" do
-    src_a = fixture("genomics_pipeline.star")
+    src_a = fixture("genomics_pipeline.kdl")
 
     src_b =
       String.replace(

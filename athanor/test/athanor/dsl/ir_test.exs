@@ -9,7 +9,7 @@ defmodule Athanor.DSL.IRTest do
 
   describe "JSON roundtrip" do
     test "genomics_pipeline serialises and deserialises losslessly" do
-      src = fixture("genomics_pipeline.star")
+      src = fixture("genomics_pipeline.kdl")
       {:ok, plan_a} = Parser.parse(src)
       # Re-encode to JSON and decode again — must be identical.
       json = Jason.encode!(plan_a)
@@ -18,7 +18,7 @@ defmodule Athanor.DSL.IRTest do
     end
 
     test "dynamic_split_align serialises and deserialises losslessly" do
-      src = fixture("dynamic_split_align.star")
+      src = fixture("dynamic_split_align.kdl")
       {:ok, plan_a} = Parser.parse(src)
       json = Jason.encode!(plan_a)
       {:ok, plan_b} = Jason.decode(json, keys: :atoms)
@@ -28,7 +28,7 @@ defmodule Athanor.DSL.IRTest do
 
   describe "IR shape" do
     test "WorkflowPlan has required top-level keys" do
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
       assert Map.has_key?(plan, :version)
       assert Map.has_key?(plan, :name)
       assert Map.has_key?(plan, :processes)
@@ -36,7 +36,7 @@ defmodule Athanor.DSL.IRTest do
     end
 
     test "ProcessDescriptor has required keys" do
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
       [proc | _] = plan.processes
       assert Map.has_key?(proc, :id)
       assert Map.has_key?(proc, :image)
@@ -47,7 +47,7 @@ defmodule Athanor.DSL.IRTest do
     end
 
     test "ResourceDef has cpu, mem, disk as numbers" do
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
       align = Enum.find(plan.processes, &(&1.image.tag == "genomics/bwa:0.7.17"))
       assert align.resources.cpu == 8.0
       assert align.resources.mem == 16.0
@@ -55,14 +55,14 @@ defmodule Athanor.DSL.IRTest do
     end
 
     test "static OutputDef carries named URI map" do
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
       align = Enum.find(plan.processes, &(&1.image.tag == "genomics/bwa:0.7.17"))
       # Jason decodes with keys: :atoms, so map keys are atoms.
       assert align.outputs.value[:output].uri =~ "s3://my-bucket/aligned/"
     end
 
     test "glob OutputDef carries list of patterns" do
-      {:ok, plan} = Parser.parse(fixture("dynamic_split_align.star"))
+      {:ok, plan} = Parser.parse(fixture("dynamic_split_align.kdl"))
       split = Enum.find(plan.processes, &(&1.image.tag == "genomics/tools:latest"))
       assert is_list(split.outputs.value)
       assert hd(split.outputs.value) == "./chunks/*.fa"

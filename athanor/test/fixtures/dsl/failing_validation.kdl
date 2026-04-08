@@ -1,0 +1,16 @@
+process "bad_process" {
+    image "test:latest"
+    command "process {input} {unknown_placeholder}"
+    inputs {
+        input "{input}"
+    }
+    outputs {
+        result "http://bad-scheme/out.txt"
+    }
+    resources cpu=-1 mem=0.0 disk=-5.0
+}
+
+channel "s3://bucket/input.txt"
+
+workflow "bad_workflow" {
+}

@@ -1,0 +1,32 @@
+process "process_r1" {
+    image "alpine"
+    command "echo R1"
+    outputs {
+        out "s3://r1.fastq"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+process "process_r2" {
+    image "alpine"
+    command "echo R2"
+    outputs {
+        out "s3://r2.fastq"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+process "align" {
+    image "bwa"
+    command "bwa mem {reads}"
+    inputs {
+        reads "{reads}"
+    }
+    outputs {
+        bam "s3://aligned.bam"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+workflow "zip_test" {
+}

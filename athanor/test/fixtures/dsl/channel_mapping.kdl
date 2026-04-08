@@ -1,0 +1,30 @@
+channel "start" type="literal" source="s3://bucket/input.txt"
+channel "out1" type="result" source="process_one"
+channel "out2" type="result" source="process_two"
+
+process "process_one" {
+    image "test:v1"
+    command "echo {in_val} > {out_val}"
+    inputs {
+        in_val "start"
+    }
+    outputs {
+        out_val "s3://bucket/test.txt"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+process "process_two" {
+    image "test:v1"
+    command "cat {in2_val}"
+    inputs {
+        in2_val "out1"
+    }
+    outputs {
+        out2_val "s3://bucket/out2.txt"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+workflow "channel_mapping" {
+}

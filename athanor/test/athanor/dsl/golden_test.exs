@@ -41,12 +41,12 @@ defmodule Athanor.DSL.GoldenTest do
   end
 
   test "genomics_pipeline snapshot matches" do
-    {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+    {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
     assert_snapshot("genomics_pipeline.json", to_pretty_json(plan))
   end
 
   test "dynamic_split_align snapshot matches" do
-    {:ok, plan} = Parser.parse(fixture("dynamic_split_align.star"))
+    {:ok, plan} = Parser.parse(fixture("dynamic_split_align.kdl"))
     assert_snapshot("dynamic_split_align.json", to_pretty_json(plan))
   end
 end

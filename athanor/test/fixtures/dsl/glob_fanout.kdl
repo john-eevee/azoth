@@ -1,0 +1,30 @@
+channel "start" type="literal" source="s3://bucket/start.txt"
+channel "out1" type="result" source="producer"
+channel "out2" type="result" source="consumer"
+
+process "producer" {
+    image "producer:v1"
+    command "produce {input}"
+    inputs {
+        input "start"
+    }
+    outputs {
+        output "s3://bucket/out/*.txt"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+process "consumer" {
+    image "consumer:v1"
+    command "consume {input}"
+    inputs {
+        input "out1"
+    }
+    outputs {
+        out "s3://bucket/final/{input.stem}.out"
+    }
+    resources cpu=1 mem=1.0 disk=1.0
+}
+
+workflow "glob_fanout" {
+}

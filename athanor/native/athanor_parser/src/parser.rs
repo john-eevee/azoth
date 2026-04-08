@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::anyhow;
 use kdl::{KdlDocument, KdlNode};
@@ -9,26 +9,6 @@ use crate::ir::{
     ProcessDescriptor, ResourceDef, RetryDef, WorkflowPlan,
 };
 
-const MAX_NAME_LEN: usize = 120;
-
-fn validate_name(name: &str, context: &str) -> anyhow::Result<()> {
-    if name.is_empty() {
-        return Err(anyhow!("{context}: name must not be empty"));
-    }
-    if name.len() > MAX_NAME_LEN {
-        return Err(anyhow!(
-            "{context}: name '{}' exceeds {} characters",
-            name, MAX_NAME_LEN
-        ));
-    }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.') {
-        return Err(anyhow!(
-            "{context}: name '{name}' contains invalid characters"
-        ));
-    }
-    Ok(())
-}
-
 pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
     let document = match source.parse::<KdlDocument>() {
         Ok(doc) => doc,
@@ -38,16 +18,6 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
     let mut workflow_name = None;
     let mut processes = Vec::new();
     let mut channels = Vec::new();
-
-    let mut templates: HashMap<String, KdlNode> = HashMap::new();
-
-    for node in document.nodes() {
-        if node.name().value() == "template" {
-            if let Some(name) = node.get(0).and_then(|v| v.as_string()) {
-                templates.insert(name.to_string(), node.clone());
-            }
-        }
-    }
 
     let mut counter = 0;
     let mut next_id = || {
@@ -66,17 +36,19 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                 }
             }
             "process" => {
-                let id = next_id();
                 let mut name = node.get(0).and_then(|v| v.as_string()).unwrap_or("").to_string();
                 if let Some(n) = node.get("name").and_then(|v| v.as_string()) {
                     name = n.to_string();
                 }
+                let id = name.clone(); // Use name as ID for easy linking in KDL
                 
                 let mut image = ImageDef { tag: "".to_string(), checksum: None };
                 let mut command = "".to_string();
                 let mut resources = ResourceDef { cpu: 1.0, mem: 1.0, disk: 1.0 };
-                let inputs = BTreeMap::new();
-                let outputs = OutputDef::Static(BTreeMap::new());
+                let mut inputs = BTreeMap::new();
+                let mut static_outputs = BTreeMap::new();
+                let mut glob_outputs = Vec::new();
+                let mut retry = None;
 
                 if let Some(children) = node.children() {
                     for child in children.nodes() {
@@ -92,29 +64,82 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                                 }
                             }
                             "resources" => {
-                                if let Some(cpu) = child.get("cpu").and_then(|v| v.as_integer()) {
-                                    resources.cpu = cpu as f64;
+                                if let Some(cpu) = child.get("cpu").and_then(|v| v.as_integer()) { resources.cpu = cpu as f64; }
+                                if let Some(cpu) = child.get("cpu").and_then(|v| v.as_float()) { resources.cpu = cpu; }
+                                if let Some(mem) = child.get("mem").and_then(|v| v.as_integer()) { resources.mem = mem as f64; }
+                                if let Some(mem) = child.get("mem").and_then(|v| v.as_float()) { resources.mem = mem; }
+                                if let Some(disk) = child.get("disk").and_then(|v| v.as_integer()) { resources.disk = disk as f64; }
+                                if let Some(disk) = child.get("disk").and_then(|v| v.as_float()) { resources.disk = disk; }
+                            }
+                            "inputs" => {
+                                if let Some(in_children) = child.children() {
+                                    for in_node in in_children.nodes() {
+                                        let key = in_node.name().value().to_string();
+                                        if let Some(val) = in_node.get(0).and_then(|v| v.as_string()) {
+                                            inputs.insert(key, InputDef {
+                                                channel_id: val.to_string(),
+                                                format: "generic".to_string(),
+                                            });
+                                        }
+                                    }
                                 }
-                                if let Some(cpu) = child.get("cpu").and_then(|v| v.as_float()) {
-                                    resources.cpu = cpu;
+                            }
+                            "outputs" => {
+                                if let Some(out_children) = child.children() {
+                                    for out_node in out_children.nodes() {
+                                        let key = out_node.name().value().to_string();
+                                        if let Some(val) = out_node.get(0).and_then(|v| v.as_string()) {
+                                            if val.contains('*') {
+                                                glob_outputs.push(val.to_string());
+                                            } else {
+                                                static_outputs.insert(key, OutputFileDef {
+                                                    uri: val.to_string(),
+                                                    format: "generic".to_string(),
+                                                });
+                                            }
+                                        }
+                                    }
                                 }
-                                if let Some(mem) = child.get("mem").and_then(|v| v.as_integer()) {
-                                    resources.mem = mem as f64;
-                                }
-                                if let Some(mem) = child.get("mem").and_then(|v| v.as_float()) {
-                                    resources.mem = mem;
-                                }
-                                if let Some(disk) = child.get("disk").and_then(|v| v.as_integer()) {
-                                    resources.disk = disk as f64;
-                                }
-                                if let Some(disk) = child.get("disk").and_then(|v| v.as_float()) {
-                                    resources.disk = disk;
+                            }
+                            "retry" => {
+                                let backoff = child.get("backoff").and_then(|v| v.as_string()).unwrap_or("linear");
+                                let count = child.get("count").and_then(|v| v.as_integer()).unwrap_or(3) as u32;
+                                if backoff == "exponential" {
+                                    retry = Some(RetryDef::Exponential {
+                                        count,
+                                        exponent: child.get("exponent").and_then(|v| v.as_float()).unwrap_or(2.0),
+                                        initial_delay: child.get("initial_delay").and_then(|v| v.as_integer()).unwrap_or(500) as u32,
+                                    });
+                                } else {
+                                    let mut delays = Vec::new();
+                                    if let Some(d) = child.get("delays").and_then(|v| v.as_string()) {
+                                        for x in d.split(',') {
+                                            if let Ok(num) = x.trim().parse::<u32>() {
+                                                delays.push(num);
+                                            }
+                                        }
+                                    }
+                                    if delays.is_empty() { delays.push(1000); }
+                                    // Pad or truncate
+                                    if delays.len() < count as usize {
+                                        let last = *delays.last().unwrap_or(&1000);
+                                        delays.resize(count as usize, last);
+                                    } else if delays.len() > count as usize {
+                                        delays.truncate(count as usize);
+                                    }
+                                    retry = Some(RetryDef::Linear { count, delays });
                                 }
                             }
                             _ => {}
                         }
                     }
                 }
+
+                let outputs = if !glob_outputs.is_empty() {
+                    OutputDef::Glob(glob_outputs)
+                } else {
+                    OutputDef::Static(static_outputs)
+                };
 
                 processes.push(ProcessDescriptor {
                     id,
@@ -124,16 +149,33 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                     inputs,
                     outputs,
                     resources,
-                    retry: None,
+                    retry,
                 });
             }
             "channel" => {
-                let id = next_id();
+                let id = node.get(0).and_then(|v| v.as_string()).unwrap_or_else(|| "").to_string();
+                let t = node.get("type").and_then(|v| v.as_string()).unwrap_or("path");
+                let source_val = node.get("source").and_then(|v| v.as_string()).unwrap_or("");
+                
+                let source = match t {
+                    "literal" => ChannelSource::Literal { value: source_val.to_string() },
+                    "result" => ChannelSource::Result { process_id: source_val.to_string() },
+                    "zip" => ChannelSource::Zip { upstreams: source_val.split(',').map(|s| s.trim().to_string()).collect() },
+                    _ => ChannelSource::FromPath { glob: source_val.to_string() },
+                };
+
+                let channel_type = match t {
+                    "literal" => ChannelType::Literal,
+                    "result" => ChannelType::Result,
+                    "zip" => ChannelType::Zip,
+                    _ => ChannelType::Path,
+                };
+
                 channels.push(ChannelDef {
                     id,
-                    channel_type: ChannelType::Path,
-                    source: ChannelSource::Literal { value: "".to_string() },
-                    format: "".to_string(),
+                    channel_type,
+                    source,
+                    format: "generic".to_string(),
                 });
             }
             _ => {}
@@ -144,6 +186,16 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
         Some(name) => name,
         None => return Err(ValidationError::NoWorkflowFound),
     };
+
+    let mut seen: HashSet<&str> = HashSet::new();
+    for proc in &processes {
+        if !seen.insert(proc.name.as_str()) {
+            return Err(ValidationError::DuplicateProcessName {
+                workflow_name: workflow_name.clone(),
+                name: proc.name.clone(),
+            });
+        }
+    }
 
     Ok(WorkflowPlan {
         version: 1,

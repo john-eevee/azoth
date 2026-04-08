@@ -28,13 +28,13 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   defp fixture(name), do: File.read!(Path.join(@fixtures, name))
 
   # ---------------------------------------------------------------------------
-  # genomics_pipeline.star integration test
+  # genomics_pipeline.kdl integration test
   # ---------------------------------------------------------------------------
 
-  describe "genomics_pipeline.star end-to-end" do
+  describe "genomics_pipeline.kdl end-to-end" do
     test "parses and registers workflow state correctly" do
       # 1. Parse the Starlark DSL
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
 
       # Verify basic plan structure
       assert plan.name == "genomics_pipeline"
@@ -109,7 +109,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
     end
 
     test "registers all channels with correct metadata" do
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
 
       wid = Uniq.UUID.uuid7()
       start_supervised!(TaskMonitor.registry_child_spec(wid))
@@ -146,7 +146,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
     end
 
     test "input-output wiring matches DSL declarations" do
-      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.star"))
+      {:ok, plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
 
       wid = Uniq.UUID.uuid7()
       start_supervised!(TaskMonitor.registry_child_spec(wid))
@@ -185,12 +185,12 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   end
 
   # ---------------------------------------------------------------------------
-  # dynamic_split_align.star integration test
+  # dynamic_split_align.kdl integration test
   # ---------------------------------------------------------------------------
 
-  describe "dynamic_split_align.star end-to-end" do
+  describe "dynamic_split_align.kdl end-to-end" do
     test "parses and registers workflow with glob outputs" do
-      {:ok, plan} = Parser.parse(fixture("dynamic_split_align.star"))
+      {:ok, plan} = Parser.parse(fixture("dynamic_split_align.kdl"))
 
       assert plan.name == "dynamic_split_align"
       assert length(plan.processes) == 2
@@ -226,7 +226,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
     end
 
     test "process names are correctly extracted from function calls" do
-      {:ok, plan} = Parser.parse(fixture("dynamic_split_align.star"))
+      {:ok, plan} = Parser.parse(fixture("dynamic_split_align.kdl"))
 
       wid = Uniq.UUID.uuid7()
       start_supervised!(TaskMonitor.registry_child_spec(wid))
@@ -264,7 +264,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   describe "edge cases and failing scripts" do
     test "parsing fails and workflow registration is prevented for invalid scripts" do
       # Parsing should fail due to multiple validation errors
-      result = Parser.parse(fixture("failing_validation.star"))
+      result = Parser.parse(fixture("failing_validation.kdl"))
 
       assert {:error, msg} = result
       assert String.contains?(msg, "unknown_placeholder")
@@ -276,7 +276,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
     end
 
     test "mapping a channel with different output and input names resolves correctly" do
-      {:ok, plan} = Parser.parse(fixture("channel_mapping.star"))
+      {:ok, plan} = Parser.parse(fixture("channel_mapping.kdl"))
 
       wid = Uniq.UUID.uuid7()
       start_supervised!(TaskMonitor.registry_child_spec(wid))
@@ -328,7 +328,7 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
 
   describe "reactive glob DAG execution setup" do
     test "processes can output globs and consumers subscribe to glob channels" do
-      {:ok, plan} = Parser.parse(fixture("reactive_glob_dag.star"))
+      {:ok, plan} = Parser.parse(fixture("reactive_glob_dag.kdl"))
 
       wid = Uniq.UUID.uuid7()
       start_supervised!(TaskMonitor.registry_child_spec(wid))
@@ -378,13 +378,13 @@ defmodule Athanor.Workflow.DSLIntegrationTest do
   end
 
   # ---------------------------------------------------------------------------
-  # zip_channels.star integration test
+  # zip_channels.kdl integration test
   # ---------------------------------------------------------------------------
 
   describe "zip channels execution setup" do
     test "processes can accept zipped channels as input and scheduler executes them correctly" do
       # 1. Parse the workflow
-      {:ok, plan} = Parser.parse(fixture("zip_channels.star"))
+      {:ok, plan} = Parser.parse(fixture("zip_channels.kdl"))
 
       # 2. Start necessary supervisors and instances
       wid = Uniq.UUID.uuid7()

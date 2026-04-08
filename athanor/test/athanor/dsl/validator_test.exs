@@ -17,12 +17,12 @@ defmodule Athanor.DSL.ValidatorTest do
   # Valid workflows — should parse without errors
   # ---------------------------------------------------------------------------
 
-  test "genomics_pipeline.star validates without errors" do
-    {:ok, _plan} = Parser.parse(fixture("genomics_pipeline.star"))
+  test "genomics_pipeline.kdl validates without errors" do
+    {:ok, _plan} = Parser.parse(fixture("genomics_pipeline.kdl"))
   end
 
-  test "dynamic_split_align.star validates without errors" do
-    {:ok, _plan} = Parser.parse(fixture("dynamic_split_align.star"))
+  test "dynamic_split_align.kdl validates without errors" do
+    {:ok, _plan} = Parser.parse(fixture("dynamic_split_align.kdl"))
   end
 
   # ---------------------------------------------------------------------------
