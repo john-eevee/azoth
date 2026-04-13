@@ -1,0 +1,125 @@
+/* Azoth Color Scheme - Custom Theme Variables */
+
+:root {
+  /* Primary Base - Obsidian Ink */
+  --azoth-primary-base: #0F172A;
+  
+  /* Secondary Base - Slate Zinc */
+  --azoth-secondary-base: #334155;
+  
+  /* Primary Accent - Transmutation Violet */
+  --azoth-accent-primary: #8B5CF6;
+  
+  /* Action/Warning - Furnace Amber */
+  --azoth-accent-heat: #F59E0B;
+  
+  /* Text/Icons - Mercury Chrome */
+  --azoth-text-primary: #E2E8F0;
+  
+  /* Success/Flow - Reactive Teal */
+  --azoth-success: #14B8A6;
+}
+
+/* VitePress Theme Overrides */
+
+/* Background colors */
+body,
+.dark {
+  --vp-c-bg: var(--azoth-primary-base);
+  --vp-c-bg-soft: var(--azoth-secondary-base);
+  --vp-c-bg-mute: #1E293B;
+  --vp-c-bg-alt: #0F172A;
+}
+
+/* Text colors */
+.dark {
+  --vp-c-text-1: var(--azoth-text-primary);
+  --vp-c-text-2: #cbd5e1;
+  --vp-c-text-3: #94a3b8;
+}
+
+/* Brand colors */
+.dark {
+  --vp-c-brand: var(--azoth-accent-primary);
+  --vp-c-brand-light: #a78bfa;
+  --vp-c-brand-lighter: #c4b5fd;
+  --vp-c-brand-lightest: #ddd6fe;
+  --vp-c-brand-dark: #7c3aed;
+  --vp-c-brand-darker: #6d28d9;
+}
+
+/* Border and divider colors */
+.dark {
+  --vp-c-border: var(--azoth-secondary-base);
+  --vp-c-divider: #1e293b;
+}
+
+/* Button and interactive colors */
+.dark {
+  --vp-button-brand-bg: var(--azoth-accent-primary);
+  --vp-button-brand-hover-bg: #a78bfa;
+  --vp-button-brand-active-bg: #7c3aed;
+}
+
+/* Alert and status colors */
+.dark {
+  --vp-c-warning-bg: #f59e0b33;
+  --vp-c-warning-border: var(--azoth-accent-heat);
+  --vp-c-warning-text: #fbbf24;
+  
+  --vp-c-success-bg: #14b8a633;
+  --vp-c-success-border: var(--azoth-success);
+  --vp-c-success-text: #2dd4bf;
+  
+  --vp-c-danger-bg: #ef444433;
+  --vp-c-danger-border: #ef4444;
+  --vp-c-danger-text: #f87171;
+}
+
+/* Sidebar styling */
+.dark .sidebar {
+  --vp-sidebar-bg-color: var(--azoth-secondary-base);
+}
+
+/* Code block styling */
+.dark code {
+  --vp-code-bg: #1e293b;
+  --vp-code-text: var(--azoth-text-primary);
+}
+
+/* Links */
+.dark a {
+  color: var(--azoth-accent-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.dark a:hover {
+  color: #a78bfa;
+}
+
+/* Custom component styling */
+.azoth-card {
+  background-color: var(--azoth-secondary-base);
+  border: 1px solid var(--azoth-secondary-base);
+  border-radius: 8px;
+  padding: 1rem;
+  color: var(--azoth-text-primary);
+}
+
+.azoth-highlight {
+  color: var(--azoth-accent-primary);
+  font-weight: 600;
+}
+
+.azoth-success {
+  color: var(--azoth-success);
+}
+
+.azoth-warning {
+  color: var(--azoth-accent-heat);
+}
+
+.azoth-accent {
+  color: var(--azoth-accent-primary);
+}

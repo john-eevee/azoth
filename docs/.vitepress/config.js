@@ -3,6 +3,9 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "Azoth",
   description: "A distributed reactive workflow engine.",
+  head: [
+    ['link', { rel: 'stylesheet', href: '/theme.css' }]
+  ],
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
@@ -15,7 +18,8 @@ export default defineConfig({
         items: [
           { text: 'Architecture', link: '/guide/architecture' },
           { text: 'Engine Internals', link: '/guide/internals' },
-          { text: 'Implementation Plan', link: '/guide/implementation-plan' }
+          { text: 'Implementation Plan', link: '/guide/implementation-plan' },
+          { text: 'Color Scheme', link: '/guide/color-scheme' }
         ]
       },
       {
