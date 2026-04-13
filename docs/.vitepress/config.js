@@ -3,9 +3,6 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "Azoth",
   description: "A distributed reactive workflow engine.",
-  head: [
-    ['link', { rel: 'stylesheet', href: '/theme.css' }]
-  ],
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },

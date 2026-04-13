@@ -13,6 +13,64 @@ The Azoth design system uses a carefully curated color palette inspired by alche
 | The "Quicksilver" | Mercury Chrome | `#E2E8F0` | Text/Primary Icons; represents the fluid, metallic data plane. |
 | Success/Flow | Reactive Teal | `#14B8A6` | Status indicators; represents the successful flow of data through channels. |
 
+## Color Samples
+
+<div class="color-grid">
+  <div class="color-sample">
+    <div class="color-box" style="background-color: #0F172A; border: 1px solid #334155;"></div>
+    <div class="color-info">
+      <strong>Obsidian Ink</strong><br/>
+      <code>#0F172A</code><br/>
+      <small>Primary Base</small>
+    </div>
+  </div>
+
+  <div class="color-sample">
+    <div class="color-box" style="background-color: #334155;"></div>
+    <div class="color-info">
+      <strong>Slate Zinc</strong><br/>
+      <code>#334155</code><br/>
+      <small>Secondary Base</small>
+    </div>
+  </div>
+
+  <div class="color-sample">
+    <div class="color-box" style="background-color: #8B5CF6;"></div>
+    <div class="color-info">
+      <strong>Transmutation Violet</strong><br/>
+      <code>#8B5CF6</code><br/>
+      <small>Primary Accent</small>
+    </div>
+  </div>
+
+  <div class="color-sample">
+    <div class="color-box" style="background-color: #F59E0B;"></div>
+    <div class="color-info">
+      <strong>Furnace Amber</strong><br/>
+      <code>#F59E0B</code><br/>
+      <small>Action/Warning</small>
+    </div>
+  </div>
+
+  <div class="color-sample">
+    <div class="color-box" style="background-color: #E2E8F0;"></div>
+    <div class="color-info">
+      <strong>Mercury Chrome</strong><br/>
+      <code>#E2E8F0</code><br/>
+      <small>Text/Icons</small>
+    </div>
+  </div>
+
+  <div class="color-sample">
+    <div class="color-box" style="background-color: #14B8A6;"></div>
+    <div class="color-info">
+      <strong>Reactive Teal</strong><br/>
+      <code>#14B8A6</code><br/>
+      <small>Success/Flow</small>
+    </div>
+  </div>
+</div>
+
 ## Usage Guidelines
 
 ### Obsidian Ink (#0F172A)
