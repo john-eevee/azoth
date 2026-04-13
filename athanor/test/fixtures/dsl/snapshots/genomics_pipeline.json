@@ -3,7 +3,7 @@
     {
       "channel_type": "literal",
       "format": "generic",
-      "id": "id_0",
+      "id": "ref",
       "source": {
         "kind": "literal",
         "value": "s3://my-bucket/refs/hg38.fa"
@@ -12,7 +12,7 @@
     {
       "channel_type": "path",
       "format": "generic",
-      "id": "id_1",
+      "id": "samples",
       "source": {
         "glob": "s3://my-bucket/data/*.fastq.gz",
         "kind": "from_path"
@@ -21,28 +21,28 @@
     {
       "channel_type": "result",
       "format": "generic",
-      "id": "chan_id_2",
+      "id": "bams",
       "source": {
         "kind": "result",
-        "process_id": "id_2"
+        "process_id": "align"
       }
     },
     {
       "channel_type": "result",
       "format": "generic",
-      "id": "chan_id_3",
+      "id": "vcfs",
       "source": {
         "kind": "result",
-        "process_id": "id_3"
+        "process_id": "call_variants"
       }
     },
     {
       "channel_type": "result",
       "format": "generic",
-      "id": "chan_id_4",
+      "id": "merged",
       "source": {
         "kind": "result",
-        "process_id": "id_4"
+        "process_id": "merge_vcfs"
       }
     }
   ],
@@ -50,17 +50,17 @@
   "processes": [
     {
       "command": "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
-      "id": "id_2",
+      "id": "align",
       "image": {
         "tag": "genomics/bwa:0.7.17"
       },
       "inputs": {
         "reads": {
-          "channel_id": "id_1",
+          "channel_id": "samples",
           "format": "generic"
         },
         "ref": {
-          "channel_id": "id_0",
+          "channel_id": "ref",
           "format": "generic"
         }
       },
@@ -82,17 +82,17 @@
     },
     {
       "command": "gatk HaplotypeCaller -R {ref} -I {bam} -O {vcf}",
-      "id": "id_3",
+      "id": "call_variants",
       "image": {
         "tag": "genomics/gatk:4.4"
       },
       "inputs": {
         "bam": {
-          "channel_id": "chan_id_2",
+          "channel_id": "bams",
           "format": "generic"
         },
         "ref": {
-          "channel_id": "id_0",
+          "channel_id": "ref",
           "format": "generic"
         }
       },
@@ -114,13 +114,13 @@
     },
     {
       "command": "bcftools merge {vcfs} -o {merged}",
-      "id": "id_4",
+      "id": "merge_vcfs",
       "image": {
         "tag": "genomics/bcftools:1.18"
       },
       "inputs": {
         "vcfs": {
-          "channel_id": "chan_id_3",
+          "channel_id": "vcfs",
           "format": "generic"
         }
       },

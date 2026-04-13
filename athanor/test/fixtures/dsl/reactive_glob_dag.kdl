@@ -1,0 +1,28 @@
+workflow "reactive_glob_dag" {
+    process "producer" {
+        image "producer:v1"
+        command "produce {input} --out-dir s3://bucket/out/"
+        inputs {
+            "input" "start_channel"
+        }
+        outputs {
+            "output" "s3://bucket/out/*.txt"
+        }
+        resources cpu=1 mem=1.0 disk=1.0
+    }
+
+    process "consumer" {
+        image "consumer:v1"
+        command "consume {input} -o {out}"
+        inputs {
+            "input" "producer_output"
+        }
+        outputs {
+            "out" "s3://bucket/final/{input.stem}.out"
+        }
+        resources cpu=1 mem=1.0 disk=1.0
+    }
+
+    channel "start_channel" type="literal" source="s3://bucket/start.txt"
+    channel "producer_output" type="result" source="producer"
+}

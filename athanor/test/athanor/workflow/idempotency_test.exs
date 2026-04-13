@@ -26,7 +26,7 @@ defmodule Athanor.Workflow.IdempotencyTest do
   end
 
   test "parsing same script yields identical workflow_id allowing idempotent submission" do
-    script1 = fixture("genomics_pipeline.star")
+    script1 = fixture("genomics_pipeline.kdl")
 
     # Emulate submitting the workflow
     {:ok, %{plan: _plan1, fingerprint: hash1}} = Parser.parse_and_fingerprint(script1)
@@ -36,7 +36,7 @@ defmodule Athanor.Workflow.IdempotencyTest do
              DynamicSupervisor.start_child(WorkflowSupervisor, {Instance, workflow_id: wid1})
 
     # Later, submit exact same script (maybe some CI retries it)
-    script2 = fixture("genomics_pipeline.star")
+    script2 = fixture("genomics_pipeline.kdl")
     {:ok, %{plan: _plan2, fingerprint: hash2}} = Parser.parse_and_fingerprint(script2)
     wid2 = "wf_" <> String.slice(hash2, 0, 16)
 
@@ -47,14 +47,14 @@ defmodule Athanor.Workflow.IdempotencyTest do
   end
 
   test "parsing script with only cosmetic changes yields identical workflow_id" do
-    script1 = fixture("genomics_pipeline.star")
+    script1 = fixture("genomics_pipeline.kdl")
 
     # Add comments and spacing
     script2 = """
-    # This is a comment added at the top
+    // This is a comment added at the top
     #{script1}
 
-    # And some trailing whitespace
+    // And some trailing whitespace
     """
 
     {:ok, %{fingerprint: hash1}} = Parser.parse_and_fingerprint(script1)

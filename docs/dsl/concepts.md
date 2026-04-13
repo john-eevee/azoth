@@ -1,7 +1,6 @@
 # Workflow DSL Specification
 
-Athanor uses **Starlark** for workflow definitions. Starlark is a deterministic,
-Python-inspired language that ensures execution plans are stable and reproducible.
+Athanor uses **KDL (Keyword Document Language)** for workflow definitions. KDL is a deterministic, node-based language that ensures execution plans are stable, readable, and reproducible.
 
 ## Core Concepts
 
@@ -18,39 +17,37 @@ Python-inspired language that ensures execution plans are stable and reproducibl
 - **Workflow**: The top-level container that declares the processes and channels
   that form an execution graph.
 - **Typed Channels**: Channels can optionally be given a type (e.g. `format="bam"`).
-  When binding inputs via `Input(channel, format="bam")` and defining outputs via 
-  `Output("...", format="bam")`, Athanor structurally validates at parse-time 
+  When binding inputs via `input_name channel="channel_name" format="bam"` and defining outputs via 
+  `output_name "..." format="bam"`, Athanor structurally validates at parse-time 
   that expected formats match the connected channels.
 
 ### Channel Types
 
-| Type | Description | DSL constructor |
+| Type | Description | KDL Node |
 |---|---|---|
-| `path` | Glob over a local or remote path; emits one item per matching file | `channel_from_path(glob)` |
-| `result` | Output channel produced by a process; emits items as the process writes outputs | implicit, returned by process functions |
-| `literal` | A single statically-known value; useful for injecting fixed references | `channel_literal(value)` |
-| `zip` | Synchronizes multiple channels; emits an item when all inputs have an item at the current cursor | `channel_zip(*channels)` |
+| `path` | Glob over a local or remote path; emits one item per matching file | `channel "name" type="path" glob="..."` |
+| `result` | Output channel produced by a process; emits items as the process writes outputs | implicit, referenced as `process_name.output_name` |
+| `literal` | A single statically-known value; useful for injecting fixed references | `channel "name" type="literal" value="..."` |
+| `zip` | Synchronizes multiple channels; emits an item when all inputs have an item at the current cursor | `channel "name" type="zip" channels="..."` |
 
 ---
 
 ## Process Definition
 
-A process function takes one or more channel arguments and returns a `process()`
-descriptor. 
+A process is defined with the `process "name" { ... }` block inside a workflow. 
 
-**Crucial Distinction:** The function arguments (e.g., `ref`, `reads`) are **not** 
+**Crucial Distinction:** Process inputs (e.g., `ref`, `reads`) do **not** directly hold
 the actual data buffers. They are placeholders representing the `ArtifactRef` 
 items that will be emitted by the upstream channels at runtime. 
 
-When you call `align(ref, reads)` in the DSL:
-1.  Starlark executes the function once to construct a **Process Descriptor** (the IR).
-2.  The `ref` and `reads` objects passed into the function contain metadata about 
-    their parent channels.
-3.  The `process()` constructor uses this metadata to "wire" the subscription graph.
-4.  The function **does not** execute the command. It merely returns a 
-    representation of *how* the command should be executed later by a worker.
+When you define a `process` in the DSL:
+1.  The parser executes once to construct a **Process Descriptor** (the IR).
+2.  The `inputs` block maps process arguments to their parent channels.
+3.  The control plane uses this metadata to "wire" the subscription graph.
+4.  The definition **does not** execute the command. It merely represents
+    *how* the command should be executed later by a worker.
 
-The function is called once per item combination emitted by the
+The process is executed once per item combination emitted by the
 upstream channels (fan-out). Resources are declared as separate named fields
 matching the control-plane model.
 
@@ -58,24 +55,28 @@ matching the control-plane model.
 
 When output filenames are known in advance, declare them as URI templates:
 
-```python
-def align(ref, reads):
-    return process(
-        image   = "genomics/bwa:0.7.17",
-        command = "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
-        inputs  = {
-            "ref":   Input(ref, format="fasta"),
-            "reads": Input(reads, format="fastq"),
-        },
-        outputs = {
-            "output": Output("s3://my-bucket/aligned/{reads.stem}.bam", format="bam"),
-        },
-        resources = {
-            "cpu":  8,
-            "mem":  16.0,   # GB
-            "disk": 50.0,   # GB
-        },
-    )
+```kdl
+workflow "example_workflow" {
+    process "align" {
+        image "genomics/bwa:0.7.17"
+        command "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}"
+
+        inputs {
+            ref channel="ref_channel" format="fasta"
+            reads channel="reads_channel" format="fastq"
+        }
+
+        outputs {
+            output "s3://my-bucket/aligned/{reads.stem}.bam" format="bam"
+        }
+
+        resources {
+            cpu 8
+            mem 16.0   // GB
+            disk 50.0  // GB
+        }
+    }
+}
 ```
 
 ### Dynamic Output Globs
@@ -86,29 +87,37 @@ as **glob patterns**. Quicksilver resolves the glob against the working director
 after the container exits, uploads every matching file to object storage, and
 publishes the resulting `ArtifactRef` array back to Athanor.
 
-```python
-def split_genome(ref):
-    return process(
-        image   = "genomics/tools:latest",
-        command = "split_tool {ref} --output-dir ./chunks/",
-        inputs  = {"ref": ref},
-        # Glob pattern: Quicksilver resolves this at runtime.
-        # Athanor never sees the filesystem; it only receives the ArtifactRefs.
-        outputs = ["./chunks/*.fa"],
-        resources = {
-            "cpu":  2,
-            "mem":  4.0,
-            "disk": 20.0,
-        },
-    )
+```kdl
+workflow "example_workflow" {
+    process "split_genome" {
+        image "genomics/tools:latest"
+        command "split_tool {ref} --output-dir ./chunks/"
+
+        inputs {
+            ref channel="ref_channel"
+        }
+
+        // Glob pattern: Quicksilver resolves this at runtime.
+        // Athanor never sees the filesystem; it only receives the ArtifactRefs.
+        outputs {
+            glob "./chunks/*.fa"
+        }
+
+        resources {
+            cpu 2
+            mem 4.0
+            disk 20.0
+        }
+    }
+}
 ```
 
 Athanor appends each resolved `ArtifactRef` to the output channel as a separate
 item, triggering one downstream `TaskRun` per file (fan-out).
 
 Key points:
-- `inputs` values are `ArtifactRef` URIs or channel items.
-- `outputs` may be a dict of named URI templates **or** a list of glob patterns.
+- `inputs` reference channel names (or implicit process output channels).
+- `outputs` may contain named URI templates **or** glob patterns.
   The two forms are mutually exclusive per process.
 - `command` placeholders (`{ref}`, `{reads}`, `{output}`, `{cpu}`) are resolved by
   the worker at staging time, not by the control-plane.
@@ -125,22 +134,26 @@ Key points:
 > item on the channel independently. This is what enables safe fan-out: multiple
 > downstream processes can subscribe to the same channel without starving each other.
 
-### `channel_from_path(glob)`
+### `channel type="path"`
 
-Emits one `ArtifactRef` per path matching the glob. The channel type is `:path`.
+Emits one `ArtifactRef` per path matching the glob. The channel type is `path`.
 Supports local paths and object-store URIs.
 
-```python
-channel_from_path("s3://my-bucket/data/*.fastq.gz")
+```kdl
+workflow "example_workflow" {
+    channel "reads_channel" type="path" glob="s3://my-bucket/data/*.fastq.gz"
+}
 ```
 
-### `channel_literal(value)`
+### `channel type="literal"`
 
-Wraps a single static value as a one-item channel. The channel type is `:literal`.
+Wraps a single static value as a one-item channel. The channel type is `literal`.
 Useful for injecting a shared reference artifact into a fan-out.
 
-```python
-channel_literal("s3://my-bucket/refs/hg38.fa")
+```kdl
+workflow "example_workflow" {
+    channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
+}
 ```
 
 ---
@@ -150,90 +163,78 @@ channel_literal("s3://my-bucket/refs/hg38.fa")
 This example demonstrates the complete pattern: static reference input, fan-out
 alignment over many samples, and a downstream merge step.
 
-```python
-# ── process definitions ───────────────────────────────────────────────────────
+```kdl
+workflow "genomics_pipeline" {
+    
+    // ── channels ─────────────────────────────────────────────────────────────────
+    channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
+    channel "reads_channel" type="path" glob="s3://my-bucket/data/*.fastq.gz"
+    
+    // ── processes ────────────────────────────────────────────────────────────────
 
-def align(ref, reads):
-    """Align one FASTQ sample against a reference genome."""
-    return process(
-        image   = "genomics/bwa:0.7.17",
-        command = "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}",
-        inputs  = {
-            "ref":   ref,
-            "reads": reads,
-        },
-        outputs = {
-            "output": "s3://my-bucket/aligned/{reads.stem}.bam",
-        },
-        resources = {
-            "cpu":  8,
-            "mem":  16.0,
-            "disk": 50.0,
-        },
-    )
+    // Align one FASTQ sample against a reference genome.
+    process "align" {
+        image "genomics/bwa:0.7.17"
+        command "bwa mem -t {cpu} {ref} {reads} | samtools sort -o {output}"
+        inputs {
+            ref channel="ref_channel"
+            reads channel="reads_channel"
+        }
+        outputs {
+            output "s3://my-bucket/aligned/{reads.stem}.bam"
+        }
+        resources {
+            cpu 8
+            mem 16.0
+            disk 50.0
+        }
+    }
 
-def call_variants(bam, ref):
-    """Call variants from an aligned BAM file."""
-    return process(
-        image   = "genomics/gatk:4.4",
-        command = "gatk HaplotypeCaller -R {ref} -I {bam} -O {vcf}",
-        inputs  = {
-            "bam": bam,
-            "ref": ref,
-        },
-        outputs = {
-            "vcf": "s3://my-bucket/variants/{bam.stem}.vcf.gz",
-        },
-        resources = {
-            "cpu":  4,
-            "mem":  32.0,
-            "disk": 20.0,
-        },
-    )
+    // Call variants from an aligned BAM file.
+    process "call_variants" {
+        image "genomics/gatk:4.4"
+        command "gatk HaplotypeCaller -R {ref} -I {bam} -O {vcf}"
+        inputs {
+            bam channel="align.output"
+            ref channel="ref_channel"
+        }
+        outputs {
+            vcf "s3://my-bucket/variants/{bam.stem}.vcf.gz"
+        }
+        resources {
+            cpu 4
+            mem 32.0
+            disk 20.0
+        }
+    }
 
-def merge_vcfs(vcfs):
-    """Merge all per-sample VCFs into a cohort VCF."""
-    return process(
-        image   = "genomics/bcftools:1.18",
-        command = "bcftools merge {vcfs} -o {merged}",
-        inputs  = {
-            "vcfs": vcfs,
-        },
-        outputs = {
-            "merged": "s3://my-bucket/cohort/merged.vcf.gz",
-        },
-        resources = {
-            "cpu":  2,
-            "mem":  8.0,
-            "disk": 10.0,
-        },
-    )
-
-# ── workflow entry point ──────────────────────────────────────────────────────
-
-def main():
-    workflow(
-        name = "genomics_pipeline",
-        channels=[
-            channel_literal("s3://my-bucket/refs/hg38.fa"),
-            channel_from_path("s3://my-bucket/data/*.fastq.gz")
-        ],
-        processes=[
-            align("s3://my-bucket/refs/hg38.fa", "s3://my-bucket/data/sample_R1.fq.gz"),
-            call_variants("s3://my-bucket/aligned/sample_R1.bam", "s3://my-bucket/refs/hg38.fa"),
-            merge_vcfs("s3://my-bucket/variants/sample_R1.vcf.gz")
-        ]
-    )
+    // Merge all per-sample VCFs into a cohort VCF.
+    process "merge_vcfs" {
+        image "genomics/bcftools:1.18"
+        command "bcftools merge {vcfs} -o {merged}"
+        inputs {
+            vcfs channel="call_variants.vcf"
+        }
+        outputs {
+            merged "s3://my-bucket/cohort/merged.vcf.gz"
+        }
+        resources {
+            cpu 2
+            mem 8.0
+            disk 10.0
+        }
+    }
+}
 ```
 
 ### Execution flow
 
 ```mermaid
 graph TD
-    Ref[channel.literal: hg38.fa] --> Align
-    Samples[channel.from_path: *.fastq.gz] --> Align[align — fan-out per sample]
+    Ref[channel literal: hg38.fa] --> Align
+    Samples[channel path: *.fastq.gz] --> Align[align — fan-out per sample]
     Align -->|bams channel| Variants[call_variants — reactive per BAM]
-    Variants -->|vcfs channel| Join[channel.join — wait for all VCFs]
+    Variants -->|vcfs channel| Join[channel join — wait for all VCFs]
     Join --> Merge[merge_vcfs — runs once]
     Merge --> Output[(s3: merged.vcf.gz)]
 ```
@@ -245,41 +246,49 @@ graph TD
 This example demonstrates glob outputs and runtime-discovered parallelism. The
 number of downstream tasks is not known until `split_genome` finishes executing.
 
-```python
-def split_genome(ref):
-    """Split a reference genome into per-chromosome FASTA files."""
-    return process(
-        image   = "genomics/tools:latest",
-        command = "split_tool {ref} --output-dir ./chunks/",
-        inputs  = {"ref": ref},
-        # Quicksilver scans ./chunks/*.fa after the container exits,
-        # uploads each file, and publishes one ArtifactRef per match.
-        outputs = ["./chunks/*.fa"],
-        resources = {"cpu": 2, "mem": 4.0, "disk": 20.0},
-    )
+```kdl
+workflow "dynamic_split_align" {
+    
+    channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
+    channel "reads_channel" type="literal" value="s3://my-bucket/data/sample_R1.fq.gz"
 
-def align_chunk(chunk, reads):
-    """Align reads against a single chromosome chunk."""
-    return process(
-        image   = "genomics/bwa:0.7.17",
-        command = "bwa mem -t {cpu} {chunk} {reads} -o {output}",
-        inputs  = {"chunk": chunk, "reads": reads},
-        outputs = {"output": "s3://my-bucket/aligned/{chunk.stem}.bam"},
-        resources = {"cpu": 8, "mem": 16.0, "disk": 50.0},
-    )
+    // Split a reference genome into per-chromosome FASTA files.
+    process "split_genome" {
+        image "genomics/tools:latest"
+        command "split_tool {ref} --output-dir ./chunks/"
+        inputs {
+            ref channel="ref_channel"
+        }
+        // Quicksilver scans ./chunks/*.fa after the container exits,
+        // uploads each file, and publishes one ArtifactRef per match.
+        outputs {
+            glob "./chunks/*.fa"
+        }
+        resources {
+            cpu 2
+            mem 4.0
+            disk 20.0
+        }
+    }
 
-def main():
-    workflow(
-        name = "dynamic_split_align",
-        channels=[
-            channel_literal("s3://my-bucket/refs/hg38.fa"),
-            channel_literal("s3://my-bucket/data/sample_R1.fq.gz")
-        ],
-        processes=[
-            split_genome("s3://my-bucket/refs/hg38.fa"),
-            align_chunk("s3://my-bucket/refs/chr1.fa", "s3://my-bucket/data/sample_R1.fq.gz")
-        ]
-    )
+    // Align reads against a single chromosome chunk.
+    process "align_chunk" {
+        image "genomics/bwa:0.7.17"
+        command "bwa mem -t {cpu} {chunk} {reads} -o {output}"
+        inputs {
+            chunk channel="split_genome.glob"
+            reads channel="reads_channel"
+        }
+        outputs {
+            output "s3://my-bucket/aligned/{chunk.stem}.bam"
+        }
+        resources {
+            cpu 8
+            mem 16.0
+            disk 50.0
+        }
+    }
+}
 ```
 
 ### Execution flow
@@ -303,7 +312,7 @@ sequenceDiagram
 
 ---
 
-Because Starlark is deterministic, the control-plane can fingerprint every task
+Because KDL is deterministic, the control-plane can fingerprint every task
 before it runs:
 
 1. The `process` descriptor (image + command template + resource declaration) is

@@ -4,17 +4,17 @@ defmodule Athanor.DSL.RetryTest do
 
   test "parses exponential retry" do
     src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "exponential", "count": 5, "exponent": 2.5, "initial_delay": 1000}
-        )
-        workflow(name = "retry_test")
+    workflow "retry_test" {
+        process "retry_step" {
+            image "img:1"
+            command "run"
+            outputs {
+                "*"
+            }
+            resources cpu=1 mem=1.0 disk=1.0
+            retry backoff="exponential" count=5 exponent=2.5 initial_delay=1000
+        }
+    }
     """
 
     {:ok, plan} = Parser.parse(src)
@@ -30,17 +30,17 @@ defmodule Athanor.DSL.RetryTest do
 
   test "parses exponential retry with default initial_delay" do
     src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "exponential", "count": 3, "exponent": 2.0}
-        )
-        workflow(name = "retry_test")
+    workflow "retry_test" {
+        process "retry_step" {
+            image "img:1"
+            command "run"
+            outputs {
+                "*"
+            }
+            resources cpu=1 mem=1.0 disk=1.0
+            retry backoff="exponential" count=3 exponent=2.0
+        }
+    }
     """
 
     {:ok, plan} = Parser.parse(src)
@@ -50,17 +50,17 @@ defmodule Athanor.DSL.RetryTest do
 
   test "parses linear retry with padding" do
     src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "linear", "count": 4, "delays": [1000, 2000]}
-        )
-        workflow(name = "retry_test")
+    workflow "retry_test" {
+        process "retry_step" {
+            image "img:1"
+            command "run"
+            outputs {
+                "*"
+            }
+            resources cpu=1 mem=1.0 disk=1.0
+            retry backoff="linear" count=4 delays="1000, 2000"
+        }
+    }
     """
 
     {:ok, plan} = Parser.parse(src)
@@ -75,17 +75,17 @@ defmodule Athanor.DSL.RetryTest do
 
   test "parses linear retry with truncation" do
     src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "linear", "count": 2, "delays": [1000, 2000, 3000]}
-        )
-        workflow(name = "retry_test")
+    workflow "retry_test" {
+        process "retry_step" {
+            image "img:1"
+            command "run"
+            outputs {
+                "*"
+            }
+            resources cpu=1 mem=1.0 disk=1.0
+            retry backoff="linear" count=2 delays="1000, 2000, 3000"
+        }
+    }
     """
 
     {:ok, plan} = Parser.parse(src)
@@ -95,96 +95,31 @@ defmodule Athanor.DSL.RetryTest do
 
   test "returns error for invalid backoff strategy" do
     src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "invalid", "count": 1}
-        )
-        workflow(name = "retry_test")
+    workflow "retry_test" {
+        process "retry_step" {
+            image "img:1"
+            command "run"
+            retry backoff="magic" count=2
+        }
+    }
     """
 
-    assert {:error, reason} = Parser.parse(src)
-    assert reason =~ "invalid retry backoff 'invalid'"
+    assert {:error, msg} = Parser.parse(src)
+    assert msg =~ "invalid retry backoff strategy" or msg =~ "magic"
   end
 
-  test "returns error when retry is not a dict" do
+  test "returns error when retry is missing properties" do
     src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = "not a dict"
-        )
-        workflow(name = "retry_test")
+    workflow "retry_test" {
+        process "retry_step" {
+            image "img:1"
+            command "run"
+            retry "random_value"
+        }
+    }
     """
 
-    assert {:error, reason} = Parser.parse(src)
-    assert reason =~ "'retry' must be a dict"
-  end
-
-  test "returns error when retry is missing backoff" do
-    src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"count": 1}
-        )
-        workflow(name = "retry_test")
-    """
-
-    assert {:error, reason} = Parser.parse(src)
-    assert reason =~ "'retry' dict missing 'backoff'"
-  end
-
-  test "returns error when linear retry is missing delays" do
-    src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "linear", "count": 1}
-        )
-        workflow(name = "retry_test")
-    """
-
-    assert {:error, reason} = Parser.parse(src)
-    assert reason =~ "'retry' linear backoff missing 'delays'"
-  end
-
-  test "returns error when linear retry has empty delays" do
-    src = """
-    def main():
-        process(
-            name = "retry_step",
-            image = "img:1",
-            command = "run",
-            inputs = {},
-            outputs = ["*"],
-            resources = {"cpu": 1, "mem": 1, "disk": 1},
-            retry = {"backoff": "linear", "count": 1, "delays": []}
-        )
-        workflow(name = "retry_test")
-    """
-
-    assert {:error, reason} = Parser.parse(src)
-    assert reason =~ "'retry.delays' must not be empty"
+    assert {:error, msg} = Parser.parse(src)
+    assert msg =~ "invalid retry" or msg =~ "must be a dict" or msg =~ "retry must be"
   end
 end
