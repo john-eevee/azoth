@@ -1,7 +1,7 @@
 /* ==========================================================================
    Azoth Design Tokens
    ========================================================================== */
-
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital@0;1&family=Lexend:wght@100..900&display=swap');
 :root {
   --azoth-void:        #0F172A; /* Obsidian Ink   - Primary Base     */
   --azoth-slate:       #334155; /* Slate Zinc     - Secondary Base   */
@@ -80,6 +80,10 @@
   /* Home hero */
   --vp-home-hero-name-color:      var(--azoth-violet);
   --vp-home-hero-name-background: transparent;
+
+  /* Fonts */
+  --vp-font-family-base: "Lexend", sans-serif;
+  --vp-font-family-mono: "Google Sans Code", monospace;
 }
 
 /* ==========================================================================
