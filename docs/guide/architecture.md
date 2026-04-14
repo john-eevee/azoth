@@ -18,7 +18,7 @@ This document defines the intended direction for Azoth — a distributed reactiv
 ### Engineering Goals
 
 - Use Elixir and OTP for orchestration, retries, supervision, and visibility.
-- Use deterministic workflow definitions via Starlark.
+- Use deterministic workflow definitions via KDL (Keyword Document Language).
 - Use Rust for performance-sensitive worker, hashing, and runtime integration paths.
 - Use gRPC for strongly typed control-plane to worker communication.
 - Design for failure as a normal operating condition.
@@ -33,36 +33,59 @@ This document defines the intended direction for Azoth — a distributed reactiv
 
 ```mermaid
 flowchart TB
-    subgraph CP[Control-Plane: Athanor]
-        Parser[Starlark Parser]
-        Planner[Workflow Planner]
-        Scheduler[Reactive Scheduler]
-        State[State Machine]
-        API[API and UI]
-        Cache[Cache Index]
+    subgraph CP["Control-Plane: Athanor (Elixir/OTP)"]
+        direction TB
+        Parser["DSL.Parser\nRust NIF → WorkflowPlan IR"]
+        GlobRes["Storage.GlobResolver\nExpands input path channels"]
+        AppSup["Athanor.Application\nTop-level Supervisor + ETS owner"]
+        WfSup["Workflow.Supervisor\nDynamicSupervisor"]
+        subgraph Instance["Workflow.Instance (one_for_all, per workflow_id)"]
+            TMReg["TaskMonitor.Registry\nElixir Registry — fingerprint→PID"]
+            Reg["Workflow.Registry\nETS-backed definition store"]
+            TM["Workflow.TaskMonitor\nPID monitor + crash escalation"]
+            Sched["Workflow.Scheduler\nIndexedBuffer · cursors · zip · CAS · queue"]
+        end
+        Disp["Workflow.Dispatcher\nBehaviour (StubDispatcher → gRPC)"]
     end
 
-    subgraph DP[Data-Plane: Quicksilver]
-        Agent[Worker Agent]
-        Stage[Data Staging]
-        Exec[Executor Adapter]
-        Iso[Isolation Runtime]
-        Logs[Log Streaming]
+    subgraph DP["Data-Plane: Quicksilver (Rust)"]
+        Agent["Worker Agent\ngRPC client"]
+        Stage["Data Staging\nDirect pull from object store"]
+        Exec["Executor Adapter\nDocker / Firecracker"]
+        GlobScan["Output Glob Scanner\nPost-execution output discovery"]
+        Logs["Log Streamer\nstdout/stderr → Athanor"]
     end
 
-    User[User Workflow] --> Parser
-    Parser --> Planner
-    Planner --> Scheduler
-    Scheduler --> State
-    Scheduler --> Cache
-    Scheduler -->|job voucher| Agent
+    subgraph Store["Object Storage"]
+        S3[(S3 / GCS / NFS)]
+    end
+
+    User["User Workflow\n(KDL source)"] -->|"submit source"| Parser
+    Parser -->|"WorkflowPlan IR"| AppSup
+    AppSup -->|"resolve input path channels"| GlobRes
+    GlobRes -->|"seed ArtifactRefs"| Sched
+    AppSup -->|"start_child"| WfSup
+    WfSup -->|"spawn Instance"| Instance
+    Reg -->|"ETS read: channels + subscriptions"| Sched
+    Sched -->|"build_voucher + dispatch"| Disp
+    Disp -->|"job voucher (gRPC)"| Agent
     Agent --> Stage
+    Stage -->|"pull inputs"| S3
     Stage --> Exec
-    Exec --> Iso
-    Iso --> Logs
-    Logs --> API
-    Agent -->|status and outputs| State
-    API --> User
+    Exec --> GlobScan
+    GlobScan -->|"upload matched files"| S3
+    Exec --> Logs
+    Logs -->|"heartbeats + logs"| Sched
+    GlobScan -->|"publish ArtifactRefs"| Sched
+    Sched -->|"unregister on complete/fail"| TM
+    TM -->|"monitor PID"| TMReg
+
+    classDef elixir fill:#4e2a8e,stroke:#fff,color:#fff;
+    classDef rust fill:#dea584,stroke:#2b2b2b,color:#2b2b2b;
+    classDef storage fill:#2b5a3e,stroke:#fff,color:#fff;
+    class Parser,GlobRes,AppSup,WfSup,TMReg,Reg,TM,Sched,Disp elixir;
+    class Agent,Stage,Exec,GlobScan,Logs rust;
+    class S3 storage;
 ```
 
 ## Core Pillars
@@ -83,13 +106,13 @@ Implications:
 
 ### 2. Deterministic Workflow Logic
 
-The workflow definition layer should be embedded and constrained. Starlark fits because it is deterministic, familiar, and safer than unconstrained scripting.
+The workflow definition layer should be embedded and constrained. KDL (Keyword Document Language) fits because it is deterministic, familiar, and safer than unconstrained scripting. The KDL source is parsed by a Rust NIF (`athanor_parser` via Rustler) that produces a stable JSON Intermediate Representation (`WorkflowPlan`), which is then decoded into Elixir data structures.
 
 Implications:
 
-- Workflow parsing should produce a stable execution plan.
+- Workflow parsing should produce a stable execution plan with a deterministic SHA-256 fingerprint.
 - The DSL should describe processes, inputs, outputs, resources, and runtime hints.
-- Parsing work should be isolated from scheduler-sensitive paths.
+- Parsing work is isolated from scheduler-sensitive paths via the NIF boundary.
 
 ### 3. Control-Plane / Data-Plane Separation
 
@@ -106,83 +129,107 @@ Implications:
 ```mermaid
 graph TB
     subgraph "Athanor: Reactive Control Plane"
-        C[Channel Struct]
-        RS[Reactive Scheduler]
-        M[Metadata Store]
+        Sched["Workflow.Scheduler\nIndexedBuffer per channel"]
+        CAS["CAS Index\nMapSet of fingerprints"]
+        ETS["Workflow.Registry\nETS :athanor_workflows"]
+        Disp["Workflow.Dispatcher\nbehaviour (StubDispatcher → gRPC)"]
     end
 
-    subgraph "Data Plane"
-        S3[(Storage: S3/GCS)]
-        Q[Quicksilver Worker]
+    subgraph "Data Plane: Quicksilver"
+        QW["Worker Agent"]
+        GlobScan["Output Glob Scanner\npost-execution output scan"]
+        S3[(Storage: S3/GCS/NFS)]
     end
 
     %% Flow 1: Materialization
-    Q -- "1. Publish Output Metadata" --> RS
-    RS -- "2. Materialize ArtifactRef" --> C
-    C -- "3. Persistent Log" --> M
+    QW -- "1. Publish ArtifactRefs (gRPC callback)" --> Sched
+    Sched -- "2. do_append → IndexedBuffer.append" --> Sched
+    Sched -- "3. evaluate_zips (zip channel sync)" --> Sched
+    ETS -- "ETS direct read: get_subscriptions" --> Sched
+    Sched -- "4. fan_out → advance cursors" --> CAS
 
-    %% Flow 2: Activation
-    C -- "4. Trigger on New Item" --> RS
-    RS -- "5. Dispatch Job Voucher" --> Q
+    %% Flow 2: Dispatch
+    CAS -- "5. enqueue_if_new (CAS dedup)" --> Sched
+    Sched -- "6. do_dispatch_next → build_voucher" --> Disp
+    Disp -- "7. dispatch job voucher (gRPC)" --> QW
 
     %% Flow 3: Data Locality
-    S3 -- "6. Direct Pull" --> Q
-    Q -- "7. Direct Push" --> S3
+    S3 -- "8. Direct pull (inputs)" --> QW
+    QW -- "9. Execute in isolation" --> GlobScan
+    GlobScan -- "10. Upload matched files" --> S3
 
     classDef elixir fill:#4e2a8e,stroke:#fff,color:#fff;
     classDef rust fill:#dea584,stroke:#2b2b2b,color:#2b2b2b;
-    class C,RS,M elixir;
-    class Q rust;
+    class Sched,CAS,ETS,Disp elixir;
+    class QW,GlobScan rust;
 ```
 
-## Per-Workflow Supervision Tree (Phase 1 Implementation)
+## Per-Workflow Supervision Tree
 
-Athanor implements each workflow as an isolated OTP supervision tree via `Athanor.Workflow.Supervisor` (DynamicSupervisor). Each workflow instance has its own `Athanor.Workflow.Instance` (one_for_all Supervisor) containing three siblings:
+Athanor implements each workflow as an isolated OTP supervision tree via `Athanor.Workflow.Supervisor` (DynamicSupervisor). Each workflow instance has its own `Athanor.Workflow.Instance` (`:one_for_all` Supervisor) containing four children started in dependency order:
 
-1. **Registry** — Stores workflow entity (channels + processes) and derives the subscription graph (which process subscribes to which channel).
-2. **Scheduler** — GenServer that maintains a reactive queue. When artifacts arrive on a channel, it enqueues one task per new item per subscriber, respecting `max_concurrency` gates and CAS deduplication (fingerprint-based idempotency).
-3. **TaskMonitor** — Elixir Registry (`:unique` keyed by fingerprint) + GenServer wrapper that monitors running task PIDs. On unexpected crash, it calls `Scheduler.fail_task/2` to transition the task to failed state and continue the workflow.
+1. **TaskMonitor.Registry** — Elixir `Registry` (`:unique` keyed by fingerprint). Must start first; used by `TaskMonitor` for O(1) PID lookups.
+2. **Workflow.Registry** — GenServer with ETS backing (`:athanor_workflows` table). Stores channels, processes, subscriptions, and a name index. All reads bypass the GenServer mailbox and go directly to ETS.
+3. **Workflow.TaskMonitor** — GenServer that monitors running task PIDs via `Process.monitor/1`. On unexpected crash (reason ≠ `:normal`), calls `Scheduler.fail_task/2` to transition the task to failed state and free the concurrency slot.
+4. **Workflow.Scheduler** — GenServer that maintains reactive state: per-channel `IndexedBuffer`s, per-subscription cursors, zip channel state, a FIFO task queue, a CAS deduplication index (`MapSet` of fingerprints), and the running tasks map.
 
 ```mermaid
 graph TB
-    subgraph DynamicSup["Athanor.Workflow.Supervisor (DynamicSupervisor)"]
-        subgraph Instance["Instance (per workflow_id, one_for_all)"]
-            Registry["Registry (Entity Store)"]
-            Scheduler["Scheduler (Reactive Queue)"]
-            TaskMonitor["TaskMonitor (PID Monitor)"]
-        end
+    subgraph AppSup["Athanor.Application (one_for_one)"]
+        WfReg["Elixir Registry\nAthanor.Workflow.Registry\n(process name lookup)"]
+        DynSup["Athanor.Workflow.Supervisor\n(DynamicSupervisor)"]
     end
-    
-    User["User / CI System"] -->|start_workflow(workflow_id, ...| DynamicSup
-    DynamicSup -->|spawn Instance| Instance
-    Registry -->|channels + subscriptions| Scheduler
-    Scheduler -->|dispatch task| TaskMonitor
-    TaskMonitor -->|monitor PID| Scheduler
+
+    subgraph Instance["Athanor.Workflow.Instance (one_for_all, per workflow_id)"]
+        TMReg["1. TaskMonitor.Registry\nElixir Registry :unique\nfingerprint → PID"]
+        Reg["2. Workflow.Registry\nGenServer + ETS :athanor_workflows\nchannels · processes · subscriptions · names_index"]
+        TM["3. Workflow.TaskMonitor\nGenServer\nProcess.monitor + crash escalation"]
+        Sched["4. Workflow.Scheduler\nGenServer\nIndexedBuffer · cursors · zip · CAS · queue"]
+    end
+
+    User["User / API"] -->|"DynamicSupervisor.start_child\n{Instance, workflow_id: id}"| DynSup
+    DynSup -->|"spawn"| Instance
+    TMReg -.->|"Registry.lookup (O(1))"| TM
+    Reg -->|"ETS direct read"| Sched
+    TM -->|"cast: fail_task on :DOWN"| Sched
+    Sched -->|"cast: unregister on complete/fail"| TM
+
+    classDef sup fill:#f9d0c4,stroke:#333,stroke-width:2px;
+    classDef genserver fill:#d4edda,stroke:#333,stroke-width:2px;
+    classDef registry fill:#cce5ff,stroke:#333,stroke-width:2px;
+
+    class DynSup,AppSup,Instance sup;
+    class Reg,TM,Sched genserver;
+    class WfReg,TMReg registry;
 ```
 
 **Isolation**: One workflow crash or high concurrency spike does not affect others. Each Instance is independently supervised and can be stopped/restarted.
 
 **Registration**: All GenServer names use `{:global, "string_name"}` instead of dynamic atoms to avoid atom table exhaustion. This is critical for systems that manage many workflows.
 
-**Fingerprinting**: Each task is uniquely identified by its fingerprint (hash of process + inputs + image + command + environment). The Scheduler uses a CAS index (MapSet of fingerprints) to prevent duplicate task dispatch if the same inputs are published multiple times.
+**Fingerprinting**: Each task is uniquely identified by `Workflow.Fingerprinting.fingerprint/1` — a SHA-256 of the process image, command, output search patterns, and sorted input artifact URIs/hashes. The Scheduler uses a CAS index (`MapSet` of fingerprints) to prevent duplicate task dispatch if the same inputs are published multiple times.
 
 ## Channel Semantics: Streams, Not Queues
 
-Channels are **append-only streams of immutable `ArtifactRef` values**. This distinction is critical:
+Channels are **append-only streams of immutable `ArtifactRef` values** backed by `Athanor.IndexedBuffer`. This distinction is critical:
 
 - **Publishers** (Quicksilver workers) append items to the tail of a channel.
-- **Subscribers** (downstream processes) maintain a cursor — an index of the last item they have consumed. They read items without removing them.
+- **Subscribers** (downstream processes) maintain a cursor — an index of the last item they have seen. They read items without removing them.
 - Multiple downstream processes can subscribe to the same channel independently. Each holds its own cursor and processes every item at its own pace.
 
 This means a downstream process can never "starve" a sibling by consuming shared data. If Process B and Process C both subscribe to the output of Process A, each receives all items regardless of ordering or speed.
 
 ```
-Channel (append-only stream)
+Channel (IndexedBuffer — append-only stream)
   index 0: ArtifactRef(chr1.fa)   ← Process B cursor: 3 (done)
   index 1: ArtifactRef(chr2.fa)       Process C cursor: 1 (in progress)
   index 2: ArtifactRef(chr3.fa)
   ...
 ```
+
+### Zip Channels
+
+A `zip` channel synchronises multiple upstream channels into a single tuple stream. The Scheduler evaluates zip readiness in `evaluate_zips/2` after every `publish`. A zipped item is emitted only when all upstream channels have an item at the current zip cursor. Cascading zips (a zip depending on another zip) are handled via recursion.
 
 ## Dynamic Pub/Sub Lifecycle
 
@@ -190,10 +237,10 @@ Because genomic tools generate an unpredictable number of output files, Athanor 
 
 ### Lifecycle Steps
 
-1. **Subscription (Athanor)**: During parsing, Athanor registers that Process B subscribes to the output channel of Process A. No file counts or paths are assumed.
+1. **Subscription (Athanor)**: During workflow registration, `Workflow.Registry` derives that Process B subscribes to the output channel of Process A. No file counts or paths are assumed. The Scheduler sets Process B's cursor to the current channel length so only future arrivals trigger tasks.
 2. **Execution (Quicksilver)**: Quicksilver runs Process A. The tool may generate any number of output files (e.g., `chr1.fa … chr24.fa`).
 3. **Publication (Quicksilver)**: After the container exits, Quicksilver scans the working directory against the declared output glob (e.g., `./chunks/*.fa`). It uploads matching files to object storage, computes content hashes, and publishes an array of `ArtifactRef` values back to Athanor over gRPC.
-4. **Fan-out (Athanor)**: Athanor appends the new `ArtifactRef` items to the channel. The Reactive Scheduler detects that Process B subscribes to this channel and immediately spawns one `TaskRun` per new item.
+4. **Fan-out (Athanor)**: The Scheduler appends the new `ArtifactRef` items via `do_append`, runs `evaluate_zips`, then `fan_out`. Fan-out detects that Process B subscribes to this channel and enqueues one `Task` per new item (deduped by CAS fingerprint). `do_dispatch_next` dispatches tasks up to the concurrency gate.
 
 This keeps Athanor entirely ignorant of filesystem layout; all path resolution stays in the data-plane.
 
@@ -201,15 +248,17 @@ This keeps Athanor entirely ignorant of filesystem layout; all path resolution s
 sequenceDiagram
     participant A as Athanor (Scheduler)
     participant Q1 as Quicksilver (Process A)
-    participant C as Channel (Stream)
+    participant C as Channel (IndexedBuffer)
     participant Q2 as Quicksilver (Process B)
 
-    A->>Q1: Dispatch job (outputs: "./chunks/*.fa")
+    A->>Q1: Dispatch job voucher (output_search_patterns: ["./chunks/*.fa"])
     Note over Q1: Tool generates N dynamic files
     Q1->>A: Publish [chr1.fa, chr2.fa, chr3.fa] as ArtifactRefs
-    A->>C: Append 3 items
-    Note over A,C: Process B subscribed to this channel
-    C-->>A: Trigger event (3 new items at cursor 0)
+    A->>C: do_append → IndexedBuffer.append (3 items at indices 0–2)
+    Note over A,C: Process B subscribed at cursor 0
+    A->>A: evaluate_zips (no zip dependency here)
+    A->>A: fan_out → advance Process B cursor to 3, enqueue 3 tasks
+    A->>A: do_dispatch_next → CAS dedup, build_voucher, dispatch
     A->>Q2: Dispatch TaskRun (chr1.fa)
     A->>Q2: Dispatch TaskRun (chr2.fa)
     A->>Q2: Dispatch TaskRun (chr3.fa)
@@ -227,21 +276,23 @@ Primary risk:
 
 - Long-running native work must not starve schedulers.
 
-### Starlark for the DSL
+### KDL for the DSL
 
-- Deterministic and constrained.
-- Familiar to users coming from Python-like ecosystems.
-- Safer than custom parser work early on.
+- Deterministic and constrained — stable hashes across re-runs.
+- Human-readable with familiar block syntax.
+- Parsed by a Rust NIF (`athanor_parser` via Rustler), returning a JSON `WorkflowPlan` IR that is decoded into Elixir data structures.
+- The IR is independently fingerprinted (SHA-256) before any execution state is attached.
 
 Primary risk:
 
-- Complex parsing or evaluation paths must be offloaded from latency-sensitive orchestration loops.
+- Complex parsing or evaluation paths must be offloaded from latency-sensitive orchestration loops. The NIF boundary already isolates this.
 
 ### Rust for Quicksilver and Low-Level Services
 
 - Strong fit for hashing, file operations, worker agents, and runtime integration.
 - Gives predictable performance for staging and executor control.
 - Works well for building gRPC services and isolation adapters.
+- The `athanor_parser` NIF is already implemented in Rust.
 
 ### Firecracker as a Premium Isolation Path
 
@@ -259,6 +310,7 @@ Primary risk:
 - Enforces typed contracts.
 - Suitable for status streams, heartbeats, and task dispatch.
 - Easier to evolve than ad hoc payload protocols.
+- The `Dispatcher` behaviour abstracts the transport: `StubDispatcher` is used during development and testing; the real gRPC implementation is swapped in via `Application.get_env(:athanor, :dispatcher_impl)` without changing any Scheduler code.
 
 ### Metadata Storage
 
@@ -271,84 +323,146 @@ Primary risk:
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant A as Athanor
-    participant Q as Quicksilver
+    participant P as DSL.Parser (Rust NIF)
+    participant GR as Storage.GlobResolver
+    participant A as Athanor (Scheduler)
+    participant D as Workflow.Dispatcher
+    participant Q as Quicksilver (Worker)
     participant S as Object Storage
-    participant R as Runtime
+    participant R as Isolation Runtime
 
-    U->>A: Submit workflow
-    A->>A: Parse Starlark and build plan
-    A->>A: Check cache and ready channels
-    A->>Q: Dispatch signed job voucher (outputs: glob pattern)
-    Q->>S: Pull inputs via URI or mount
-    Q->>R: Start isolated task
+    U->>P: Submit KDL workflow source
+    P->>P: parse_workflow/1 → WorkflowPlan IR (JSON)
+    P-->>A: Decoded IR (channels, processes, subscriptions)
+    A->>GR: Resolve input path channels (glob URIs)
+    GR-->>A: Seed ArtifactRefs for input channels
+    A->>A: Register workflow (Registry + ETS), derive subscriptions
+    A->>A: publish seed artifacts → fan_out → enqueue tasks
+    A->>A: Check CAS fingerprint index (skip cached tasks)
+    A->>D: build_voucher(workflow_id, task, process)
+    D->>Q: Dispatch signed job voucher (gRPC)
+    Q->>S: Pull inputs by URI (direct — never via Athanor)
+    Q->>R: Start isolated task (Docker / Firecracker)
     R-->>Q: Stream stdout and stderr
-    Q-->>A: Heartbeats and logs
-    R->>S: Write outputs (dynamic file count)
-    Q->>Q: Resolve glob against working directory
+    Q-->>A: Heartbeats and log lines
+    R->>Q: Task exits
+    Q->>Q: Resolve output_search_patterns against working directory
     Q->>S: Upload matched files, compute content hashes
     Q-->>A: Publish ArtifactRefs for all resolved outputs
-    A->>A: Append ArtifactRefs to channel; trigger fan-out
+    A->>A: do_append → evaluate_zips → fan_out → dispatch downstream tasks
     A-->>U: Update UI and downstream readiness
 ```
 
-## Data Locality Flow
+## Data-Plane Interaction Graph
+
+This graph shows the full control-plane / data-plane boundary and every data movement path. The key invariant: Athanor only ever sees URIs and content hashes (`ArtifactRef`). Bulk data — input files, output files, log payloads — never traverses the control-plane.
 
 ```mermaid
-flowchart LR
-    Store[(S3 / GCS / NFS)] --> Worker[Quicksilver Worker]
-    Worker --> Runtime[Task Runtime]
-    Runtime --> Output[(Output Store)]
-    Worker --> Status[Status + Logs]
-    Status --> Athanor
+flowchart TB
+    subgraph CP["Control-Plane: Athanor (Elixir/OTP)"]
+        Sched["Workflow.Scheduler\nfan-out · CAS · queue"]
+        Disp["Workflow.Dispatcher\n(StubDispatcher → gRPC)"]
+        GlobRes["Storage.GlobResolver\ninput channel seeding"]
+    end
+
+    subgraph DP["Data-Plane: Quicksilver (Rust)"]
+        Agent["Worker Agent\ngRPC client"]
+        Staging["Data Staging\ndirect pull"]
+        Runtime["Isolation Runtime\nDocker / Firecracker"]
+        GlobScan["Output Glob Scanner\npost-execution"]
+        LogStreamer["Log Streamer\nstdout/stderr"]
+    end
+
+    subgraph Store["Object Storage"]
+        InputStore[(Input Artifacts\nS3 / GCS / NFS)]
+        OutputStore[(Output Artifacts\nS3 / GCS / NFS)]
+    end
+
+    %% ① Control path — voucher only, never payload
+    Sched -->|"① job voucher\nimage · command · input URIs\noutput patterns · fingerprint"| Disp
+    Disp -->|"② dispatch (gRPC)"| Agent
+
+    %% ③ Data pull — bypasses control-plane entirely
+    Agent --> Staging
+    Staging -->|"③ pull inputs by URI"| InputStore
+
+    %% ④ Execution
+    Staging -->|"④ stage inputs"| Runtime
+
+    %% ⑤⑥ Log streaming — metadata only, not payload
+    Runtime -->|"⑤ stdout/stderr"| LogStreamer
+    LogStreamer -->|"⑥ heartbeats + log lines"| Sched
+
+    %% ⑦⑧⑨ Output discovery
+    Runtime -->|"⑦ task exits"| GlobScan
+    GlobScan -->|"⑧ upload matched files + compute hashes"| OutputStore
+    GlobScan -->|"⑨ ArtifactRefs (URIs + hashes only)"| Sched
+
+    %% ⑩ Input seeding — URIs only, no payload through control-plane
+    GlobRes -->|"⑩ seed ArtifactRefs (URIs only)"| Sched
+    InputStore -.->|"backing store"| GlobRes
+
+    classDef cp fill:#4e2a8e,stroke:#fff,color:#fff;
+    classDef dp fill:#dea584,stroke:#2b2b2b,color:#2b2b2b;
+    classDef store fill:#2b5a3e,stroke:#fff,color:#fff;
+    class Sched,Disp,GlobRes cp;
+    class Agent,Staging,Runtime,GlobScan,LogStreamer dp;
+    class InputStore,OutputStore store;
 ```
 
-This keeps bulk transfer close to execution and prevents the control-plane from becoming a bottleneck.
+## Reactive Scheduler Execution Flow
 
-## Reactive Scheduler Execution Flow (Phase 1)
+The Scheduler implements a pull-based task dispatch model. Every `publish` call triggers a four-stage synchronous pipeline inside the GenServer:
 
-The Scheduler implements a pull-based task dispatch model:
+1. **`do_append`**: Appends new `ArtifactRef` items to the target channel's `IndexedBuffer`. Indices are stable and never reused.
 
-1. **Subscription Setup**: At workflow start, the Scheduler derives subscriptions from the Registry. Each process gets a cursor at the current buffer length, so only *new* arrivals trigger tasks.
+2. **`evaluate_zips`**: Checks whether any zip channel depending on the updated channel has all upstream channels ready at the current zip cursor. If so, pulls one item from each upstream, emits a zipped tuple, appends it to the zip channel buffer, and recurses to handle cascading zip dependencies.
 
-2. **Append Event**: When Quicksilver publishes artifacts (e.g., from Process A's output), the Scheduler's `do_append/2` handler receives the new items and appends them to the channel buffer.
+3. **`fan_out`**: For each subscriber to the channel, reads items since the subscription cursor via `IndexedBuffer.from_cursor/2`. For each new item, calls `enqueue_if_new`: computes the task fingerprint, skips if the CAS index already contains it, otherwise appends to the FIFO queue and adds to the CAS index. Advances the cursor.
 
-3. **Fan-out**: For each new item, the Scheduler checks all subscribers to that channel. For each subscriber that has not yet seen the item (cursor < item index), it:
-   - Computes the task fingerprint (hash of process + inputs).
-   - Checks the CAS index to avoid duplicates.
-   - Enqueues the task into the queue.
-
-4. **Concurrency Gate**: Tasks are dequeued and dispatched to Quicksilver only if `current_running_count < max_concurrency`. Excess tasks wait in the queue.
-
-5. **Dispatch**: The Dispatcher builds a voucher (image, command, inputs, output_patterns, resources, fingerprint) and returns `{:ok, fingerprint}`. The TaskMonitor registers the fingerprint → PID mapping.
-
-6. **Completion/Failure**: When a task completes or fails, the handler updates the state:
-   - Moves the task to completed/failed state.
-   - If outputs are available, publishes them to the process's output channel (triggering downstream fan-out).
-   - Dequeues the next waiting task if the concurrency gate allows.
+4. **`do_dispatch_next`**: Dequeues tasks and dispatches them via `Dispatcher.build_voucher/3` + `Dispatcher.dispatch/1` until demand is met or the queue is empty. On success, adds to `running_tasks` and registers with `TaskMonitor`. On error, re-enqueues at the back and removes from the CAS index so the task can be re-fingerprinted.
 
 ```mermaid
 sequenceDiagram
     participant Q as Quicksilver (Process A)
-    participant Scheduler
-    participant Registry
-    participant Dispatcher
-    participant TM as TaskMonitor
-    
-    Q->>Scheduler: do_append(channel_id, [ArtifactRef])
-    Scheduler->>Registry: get_subscriptions(channel_id)
-    loop for each subscriber
-        Scheduler->>Scheduler: enqueue_task (if not CAS-deduped)
+    participant Sched as Workflow.Scheduler
+    participant IB as IndexedBuffer (per channel)
+    participant Subs as Subscriptions (cursors)
+    participant CAS as CAS Index (MapSet)
+    participant Disp as Workflow.Dispatcher
+    participant TM as Workflow.TaskMonitor
+
+    Q->>Sched: cast: publish(channel_id, [ArtifactRef])
+    Sched->>IB: do_append → IndexedBuffer.append
+    Sched->>Sched: evaluate_zips (zip channel readiness check)
+    Sched->>Subs: fan_out → from_cursor(buf, cursor) per subscriber
+    loop for each new item per subscriber
+        Sched->>CAS: fingerprint in CAS? → skip if yes
+        CAS-->>Sched: no → :queue.snoc(task) + MapSet.put(fingerprint)
     end
-    
-    Scheduler->>Dispatcher: dispatch_task(fingerprint, voucher)
-    Dispatcher->>Q: dispatch (async)
-    Scheduler->>TM: register(fingerprint, PID)
-    TM->>TM: monitor(PID)
-    
-    Q->>Scheduler: complete_task(fingerprint, [outputs])
-    Scheduler->>Scheduler: do_append(output_channel, [ArtifactRef])
-    Scheduler->>Scheduler: dispatch_next (dequeue if gate allows)
+    Sched->>Disp: do_dispatch_next → build_voucher + dispatch
+    Disp-->>Q: job voucher (async)
+    Disp-->>Sched: {:ok, fingerprint}
+    Sched->>TM: cast: register(fingerprint, task_pid, scheduler_pid)
+    TM->>TM: Process.monitor(task_pid)
+    TM->>TM: Registry.register(fingerprint, pid)
+
+    Note over Q,TM: Path A — clean completion
+    Q->>Sched: cast: complete_task(fingerprint, [output ArtifactRefs])
+    Sched->>TM: cast: unregister(fingerprint)
+    TM->>TM: Process.demonitor(ref, [:flush])
+    Sched->>IB: do_append(output_channel_id, output_artifacts)
+    Sched->>Sched: evaluate_zips + fan_out (trigger downstream)
+    Sched->>Sched: do_dispatch_next(1)
+
+    Note over Q,TM: Path B — unexpected crash
+    Q--xTM: task process crashes
+    TM->>TM: handle_info {:DOWN, ref, :process, pid, reason}
+    alt reason != :normal
+        TM->>Sched: cast: fail_task(fingerprint)
+        Sched->>Sched: remove from running_tasks
+        Sched->>Sched: do_dispatch_next(1)
+    end
 ```
 
 ## Milestones
@@ -402,6 +516,7 @@ gantt
 
 - Split orchestration from execution.
 - Define job voucher, worker registration, and heartbeat protocols.
+- Implement the real gRPC `Dispatcher`, replacing `StubDispatcher` via `Application.get_env(:athanor, :dispatcher_impl)`.
 - Add status streaming from workers back to Athanor.
 
 #### Milestone 6: Heartbeats and Retry
@@ -425,16 +540,18 @@ gantt
 ## Example Job Voucher
 
 ```elixir
-%Job{
-  id: "task_01_alignment",
+%{
+  workflow_id: "wf_01_genomics",
+  fingerprint: "a3f9c2d1b8e4...",
   image: "genomics/bwa:latest",
+  command: "bwa mem -t 8 /data/ref /data/reads | samtools sort -o /data/output.bam",
   inputs: [
-    %{name: "ref", uri: "s3://my-genome-data/hg38.fa"},
-    %{name: "reads", uri: "s3://my-genome-data/sample_R1.fq.gz"}
+    %{name: "s3://my-genome-data/hg38.fa",        uri: "s3://my-genome-data/hg38.fa"},
+    %{name: "s3://my-genome-data/sample_R1.fq.gz", uri: "s3://my-genome-data/sample_R1.fq.gz"}
   ],
-  command: "bwa mem -t 8 /data/ref /data/reads",
-  resources: %{cpu: 8, ram_gb: 16},
-  lease_token: "ed25519:v1:eyJhbGciOiJFZERTQSJ9..."
+  output_search_patterns: ["./output.bam"],
+  resources: %{cpu: 8.0, mem: 17_179_869_184, disk: 53_687_091_200},
+  retry: %{backoff: :exponential, count: 3, exponent: 2.0, initial_delay: 1000}
 }
 ```
 
@@ -448,10 +565,11 @@ gantt
 - Firecracker infrastructure constraints such as KVM availability and nested virtualization support.
 - Dynamic output cardinality: glob resolution on the worker must be atomic with the upload step to avoid partial publications on failure.
 - Cursor management for channel subscribers: cursors must be durable and recoverable after control-plane restart.
+- Zip channel cursor durability: zip cursors live in Scheduler in-memory state and are lost on restart.
 
 ## Recommended Initial Scope
 
-- Start with a local runner driven by a simple JSON/YAML manifest; validate the execution model before introducing the Starlark parser.
+- Start with a local runner driven by a simple KDL manifest; validate the execution model before integrating the full NIF-based parser.
 - Add structured log streaming alongside the runner, not as a later observability pass.
 - Establish content hashing and cache correctness before building reactive channel semantics.
 - Introduce remote workers only after the state machine and fingerprint semantics are stable.
@@ -459,7 +577,7 @@ gantt
 
 ## Success Criteria For v1
 
-- Users can define deterministic workflows in Starlark.
+- Users can define deterministic workflows in KDL.
 - Athanor can schedule reactive execution based on input readiness.
 - Quicksilver can execute jobs remotely and report status reliably.
 - Cached tasks resume correctly after interruption or restart.
