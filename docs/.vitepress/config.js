@@ -29,29 +29,33 @@ export default withMermaid({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Guide', link: '/guide/architecture' },
-      { text: 'DSL', link: '/dsl/concepts' }
+      { text: 'Guide', link: '/guide' },
+      { text: 'Architecture', link: '/architecture' }
     ],
     sidebar: [
       {
         text: 'Guide',
         items: [
-          { text: 'Architecture', link: '/guide/architecture' },
-          { text: 'Engine Internals', link: '/guide/internals' },
-          { text: 'Implementation Plan', link: '/guide/implementation-plan' },
-          { text: 'Color Scheme', link: '/guide/color-scheme' }
+          { text: 'Color Scheme', link: '/guide/color-scheme' },
+          {
+            text: 'DSL',
+            items: [
+              { text: 'Concepts', link: '/dsl/concepts' },
+              { text: 'Operators & Functions', link: '/dsl/reference' }
+            ]
+          }
         ]
       },
       {
-        text: 'DSL',
+        text: "Architecture",
+        link: '/architecture',
         items: [
-          { text: 'Concepts', link: '/dsl/concepts' },
-          { text: 'Operators & Functions', link: '/dsl/reference' }
+          { text: "Decisions", link: "/architecture/decisions" },
         ]
       }
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/organization/azoth' }
+      { icon: 'github', link: 'https://github.com/john-eeve/azoth' }
     ]
   }
 })
