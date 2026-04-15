@@ -35,7 +35,7 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                                 name = n.to_string();
                             }
                             let id = name.clone(); // Use name as ID for easy linking in KDL
-                            
+
                             let mut image = ImageDef { tag: "".to_string(), checksum: None };
                             let mut command = "".to_string();
                             let mut resources = ResourceDef { cpu: 1.0, mem: 1.0, disk: 1.0 };
@@ -165,7 +165,7 @@ pub fn parse(source: &str) -> Result<WorkflowPlan, ValidationError> {
                             let id = child_node.get(0).and_then(|v| v.as_string()).unwrap_or_else(|| "").to_string();
                             let t = child_node.get("type").and_then(|v| v.as_string()).unwrap_or("path");
                             let source_val = child_node.get("source").and_then(|v| v.as_string()).unwrap_or("");
-                            
+
                             let source = match t {
                                 "literal" => ChannelSource::Literal { value: source_val.to_string() },
                                 "result" => ChannelSource::Result { process_id: source_val.to_string() },
