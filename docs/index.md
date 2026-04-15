@@ -11,7 +11,7 @@ hero:
       link: /guide/architecture
     - theme: alt
       text: View on GitHub
-      link: https://github.com/organization/azoth
+      link: https://github.com/john-eeve/azoth
 
 features:
   - title: Bring Compute to Data
