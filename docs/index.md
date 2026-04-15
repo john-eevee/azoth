@@ -8,10 +8,10 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: /guide/architecture
+      link: /guide
     - theme: alt
       text: View on GitHub
-      link: https://github.com/organization/azoth
+      link: https://github.com/john-eeve/azoth
 
 features:
   - title: Bring Compute to Data
