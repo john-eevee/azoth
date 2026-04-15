@@ -1,0 +1,205 @@
+/* ==========================================================================
+   Azoth Design Tokens
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital@0;1&family=Lexend:wght@100..900&display=swap');
+:root {
+  --azoth-void:        #0F172A; /* Obsidian Ink   - Primary Base     */
+  --azoth-void-elv:    #1E293B; /* elevated surface above void       */
+  --azoth-slate:       #334155; /* Slate Zinc     - Secondary Base   */
+  --azoth-slate-mid:   #94A3B8; /* mid-tone between slate and chrome */
+  --azoth-slate-dim:   #64748B; /* dimmed slate for subtle text      */
+  --azoth-black:       #000000;
+  --azoth-white:       #FFFFFF;
+
+  /* Light mode surface scale derived from chrome */
+  --azoth-chrome:      #E2E8F0; /* Mercury Chrome - Text/Icons       */
+  --azoth-chrome-2:    #F1F5F9;
+  --azoth-chrome-3:    #F8FAFC;
+  --azoth-chrome-border: #CBD5E1;
+
+  --azoth-violet:      #8B5CF6; /* Transmutation Violet - Brand      */
+  --azoth-violet-2:    #7C3AED;
+  --azoth-violet-3:    #6D28D9;
+  --azoth-violet-soft: rgba(139, 92, 246, 0.16);
+  --azoth-amber:       #F59E0B; /* Furnace Amber  - Action/Warning   */
+  --azoth-amber-2:     #D97706;
+  --azoth-amber-3:     #B45309;
+  --azoth-amber-soft:  rgba(245, 158, 11, 0.16);
+  --azoth-teal:        #14B8A6; /* Reactive Teal  - Success/Flow     */
+  --azoth-teal-2:      #0D9488;
+  --azoth-teal-3:      #0F766E;
+  --azoth-teal-soft:   rgba(20, 184, 166, 0.16);
+}
+
+/* ==========================================================================
+   VitePress Light Theme — map Azoth tokens onto every vp variable
+   ========================================================================== */
+
+:root {
+  /* Backgrounds */
+  --vp-c-bg:        var(--azoth-chrome-3);
+  --vp-c-bg-alt:    var(--azoth-chrome-2);
+  --vp-c-bg-elv:    var(--azoth-white);
+  --vp-c-bg-soft:   var(--azoth-chrome);
+
+  /* Borders */
+  --vp-c-border:    var(--azoth-chrome-border);
+  --vp-c-divider:   var(--azoth-chrome);
+  --vp-c-gutter:    var(--azoth-chrome-border);
+
+  /* Text */
+  --vp-c-text-1: var(--azoth-void);
+  --vp-c-text-2: var(--azoth-slate);
+  --vp-c-text-3: var(--azoth-slate-dim);
+
+  /* Brand palette (violet) */
+  --vp-c-brand-1:    var(--azoth-violet);
+  --vp-c-brand-2:    var(--azoth-violet-2);
+  --vp-c-brand-3:    var(--azoth-violet-3);
+  --vp-c-brand-soft: var(--azoth-violet-soft);
+  --vp-c-brand:      var(--azoth-violet); /* deprecated alias kept */
+
+  /* Tip → brand */
+  --vp-c-tip-1:    var(--azoth-violet);
+  --vp-c-tip-2:    var(--azoth-violet-2);
+  --vp-c-tip-3:    var(--azoth-violet-3);
+  --vp-c-tip-soft: var(--azoth-violet-soft);
+
+  /* Success → teal */
+  --vp-c-success-1:    var(--azoth-teal);
+  --vp-c-success-2:    var(--azoth-teal-2);
+  --vp-c-success-3:    var(--azoth-teal-3);
+  --vp-c-success-soft: var(--azoth-teal-soft);
+
+  /* Warning → amber */
+  --vp-c-warning-1:    var(--azoth-amber);
+  --vp-c-warning-2:    var(--azoth-amber-2);
+  --vp-c-warning-3:    var(--azoth-amber-3);
+  --vp-c-warning-soft: var(--azoth-amber-soft);
+
+  /* Buttons */
+  --vp-button-brand-border:        transparent;
+  --vp-button-brand-text:          var(--azoth-white);
+  --vp-button-brand-bg:            var(--azoth-violet-3);
+  --vp-button-brand-hover-border:  transparent;
+  --vp-button-brand-hover-text:    var(--azoth-white);
+  --vp-button-brand-hover-bg:      var(--azoth-violet-2);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text:   var(--azoth-white);
+  --vp-button-brand-active-bg:     var(--azoth-violet);
+
+  /* Home hero */
+  --vp-home-hero-name-color:      var(--azoth-violet);
+  --vp-home-hero-name-background: transparent;
+
+  /* Fonts */
+  --vp-font-family-base: "Lexend", sans-serif;
+  --vp-font-family-mono: "Google Sans Code", monospace;
+}
+
+/* ==========================================================================
+   VitePress Dark Theme
+   ========================================================================== */
+
+.dark {
+  /* Backgrounds */
+  --vp-c-bg:        var(--azoth-void);
+  --vp-c-bg-alt:    var(--azoth-void-elv);
+  --vp-c-bg-elv:    var(--azoth-void-elv);
+  --vp-c-bg-soft:   var(--azoth-slate);
+
+  /* Borders */
+  --vp-c-border:    var(--azoth-slate);
+  --vp-c-divider:   var(--azoth-void-elv);
+  --vp-c-gutter:    var(--azoth-black);
+
+  /* Text */
+  --vp-c-text-1: var(--azoth-chrome);
+  --vp-c-text-2: var(--azoth-slate-mid);
+  --vp-c-text-3: var(--azoth-slate-dim);
+
+  /* Brand palette (violet) */
+  --vp-c-brand-1:    var(--azoth-violet);
+  --vp-c-brand-2:    var(--azoth-violet-2);
+  --vp-c-brand-3:    var(--azoth-violet-3);
+  --vp-c-brand-soft: var(--azoth-violet-soft);
+  --vp-c-brand:      var(--azoth-violet);
+
+  /* Tip → brand */
+  --vp-c-tip-1:    var(--azoth-violet);
+  --vp-c-tip-2:    var(--azoth-violet-2);
+  --vp-c-tip-3:    var(--azoth-violet-3);
+  --vp-c-tip-soft: var(--azoth-violet-soft);
+
+  /* Success → teal */
+  --vp-c-success-1:    var(--azoth-teal);
+  --vp-c-success-2:    var(--azoth-teal-2);
+  --vp-c-success-3:    var(--azoth-teal-3);
+  --vp-c-success-soft: var(--azoth-teal-soft);
+
+  /* Warning → amber */
+  --vp-c-warning-1:    var(--azoth-amber);
+  --vp-c-warning-2:    var(--azoth-amber-2);
+  --vp-c-warning-3:    var(--azoth-amber-3);
+  --vp-c-warning-soft: var(--azoth-amber-soft);
+
+  /* Buttons */
+  --vp-button-brand-border:        transparent;
+  --vp-button-brand-text:          var(--azoth-white);
+  --vp-button-brand-bg:            var(--azoth-violet-3);
+  --vp-button-brand-hover-border:  transparent;
+  --vp-button-brand-hover-text:    var(--azoth-white);
+  --vp-button-brand-hover-bg:      var(--azoth-violet-2);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text:   var(--azoth-white);
+  --vp-button-brand-active-bg:     var(--azoth-violet);
+
+  /* Home hero */
+  --vp-home-hero-name-color:      var(--azoth-violet);
+  --vp-home-hero-name-background: transparent;
+}
+
+/* ==========================================================================
+   Color Sample Grid (color-scheme.md)
+   ========================================================================== */
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.color-sample {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.color-box {
+  width: 100%;
+  height: 120px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.color-box:hover {
+  transform: scale(1.05);
+}
+
+.color-info {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.color-info strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.color-info small {
+  display: block;
+  opacity: 0.6;
+  font-size: 0.75rem;
+}
