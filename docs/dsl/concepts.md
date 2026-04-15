@@ -17,8 +17,8 @@ Athanor uses **KDL (Keyword Document Language)** for workflow definitions. KDL i
 - **Workflow**: The top-level container that declares the processes and channels
   that form an execution graph.
 - **Typed Channels**: Channels can optionally be given a type (e.g. `format="bam"`).
-  When binding inputs via `input_name channel="channel_name" format="bam"` and defining outputs via 
-  `output_name "..." format="bam"`, Athanor structurally validates at parse-time 
+  When binding inputs via `input_name channel="channel_name" format="bam"` and defining outputs via
+  `output_name "..." format="bam"`, Athanor structurally validates at parse-time
   that expected formats match the connected channels.
 
 ### Channel Types
@@ -34,11 +34,11 @@ Athanor uses **KDL (Keyword Document Language)** for workflow definitions. KDL i
 
 ## Process Definition
 
-A process is defined with the `process "name" { ... }` block inside a workflow. 
+A process is defined with the `process "name" { ... }` block inside a workflow.
 
 **Crucial Distinction:** Process inputs (e.g., `ref`, `reads`) do **not** directly hold
-the actual data buffers. They are placeholders representing the `ArtifactRef` 
-items that will be emitted by the upstream channels at runtime. 
+the actual data buffers. They are placeholders representing the `ArtifactRef`
+items that will be emitted by the upstream channels at runtime.
 
 When you define a `process` in the DSL:
 1.  The parser executes once to construct a **Process Descriptor** (the IR).
@@ -165,11 +165,11 @@ alignment over many samples, and a downstream merge step.
 
 ```kdl
 workflow "genomics_pipeline" {
-    
+
     // ── channels ─────────────────────────────────────────────────────────────────
     channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
     channel "reads_channel" type="path" glob="s3://my-bucket/data/*.fastq.gz"
-    
+
     // ── processes ────────────────────────────────────────────────────────────────
 
     // Align one FASTQ sample against a reference genome.
@@ -248,7 +248,7 @@ number of downstream tasks is not known until `split_genome` finishes executing.
 
 ```kdl
 workflow "dynamic_split_align" {
-    
+
     channel "ref_channel" type="literal" value="s3://my-bucket/refs/hg38.fa"
     channel "reads_channel" type="literal" value="s3://my-bucket/data/sample_R1.fq.gz"
 

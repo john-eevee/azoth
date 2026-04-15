@@ -96,7 +96,7 @@ Channels are defined using the `channel` node within a `workflow` block.
 
 ### `channel type="path"`
 
-Emits one `ArtifactRef` per path matching the glob. 
+Emits one `ArtifactRef` per path matching the glob.
 
 **Syntax**:
 ```kdl
